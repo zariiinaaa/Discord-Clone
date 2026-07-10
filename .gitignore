@@ -1,0 +1,17 @@
+.vs/
+bin/
+obj/
+**/bin/
+**/obj/
+
+node_modules/
+**/node_modules/
+dist/
+build/
+
+.env
+appsettings.Development.json
+
+*.user
+*.suo
+*.log
