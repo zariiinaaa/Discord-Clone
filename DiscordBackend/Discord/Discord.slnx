@@ -1,3 +1,6 @@
 <Solution>
+  <Project Path="Discord.Application/Discord.Application.csproj" Id="fffb600f-2a1c-49df-b03a-97a0f8e7970c" />
+  <Project Path="Discord.Core/Discord.Core.csproj" Id="629d2124-8aab-4f2c-82c9-34c12a89f370" />
+  <Project Path="Discord.Infrastructure/Discord.Infrastructure.csproj" Id="769fd2b5-83d6-4f25-b524-d3e3b7b7c4f9" />
   <Project Path="Discord/Discord.csproj" />
 </Solution>
