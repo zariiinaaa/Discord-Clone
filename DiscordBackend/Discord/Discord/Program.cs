@@ -1,28 +1,54 @@
-
+using Discord.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Discord.Application.Validators.Auth;
+using FluentValidation;
+using Discord.Core.Interfaces;
+using Discord.Infrastructure.Services;
+using Discord.Extensions;
+using Discord.Core.Entities;
+using Microsoft.AspNetCore.Identity;
+using Discord.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+
 
 builder.Services.AddControllers();
+builder.Services.AddValidatorsFromAssemblyContaining<
+    RegisterRequestDtoValidator>();
 
-//builder.Services.AddDbContext<AppDbContext>(options =>
-//    options.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
+builder.Services.AddJwtAuthentication(
+    builder.Configuration);
 
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+builder.Services.AddScoped<ITokenService, TokenService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+
+
+builder.Services.AddScoped<
+    IPasswordHasher<User>,
+    PasswordHasher<User>>();
+
+var connectionString =
+    builder.Configuration.GetConnectionString("Default")
+    ?? throw new InvalidOperationException(
+        "Default connection string tapılmadı.");
+
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlServer(connectionString));
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
-
-// Configure the HTTP request pipeline.
+app.UseMiddleware<ExceptionMiddleware>();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
+app.UseStaticFiles();
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
