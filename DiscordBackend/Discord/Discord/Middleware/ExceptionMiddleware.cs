@@ -36,38 +36,44 @@ public class ExceptionMiddleware
         var (statusCode, title) = exception switch
         {
             ValidationException =>
-                (StatusCodes.Status400BadRequest, "Validation xətası"),
+                (StatusCodes.Status400BadRequest,"Validation xətası"),
+
+            BadRequestException =>
+                (StatusCodes.Status400BadRequest,"Sorğu düzgün deyil"
+                ),
 
             UnauthorizedException =>
-                (StatusCodes.Status401Unauthorized, "Autentifikasiya xətası"),
+                (StatusCodes.Status401Unauthorized,"Autentifikasiya xətası"),
 
             ForbiddenException =>
-                (StatusCodes.Status403Forbidden, "Giriş qadağandır"),
+                (StatusCodes.Status403Forbidden,"Giriş qadağandır"),
 
             ConflictException =>
-                (StatusCodes.Status409Conflict, "Məlumat konflikti"),
+                (StatusCodes.Status409Conflict,"Məlumat konflikti"),
 
             KeyNotFoundException =>
-                (StatusCodes.Status404NotFound, "Məlumat tapılmadı"),
+                (StatusCodes.Status404NotFound,"Məlumat tapılmadı"),
 
             _ =>
-                (StatusCodes.Status500InternalServerError, "Server xətası")
+                (StatusCodes.Status500InternalServerError,"Server xətası")
         };
 
-        if (statusCode == StatusCodes.Status500InternalServerError)
+        if (statusCode ==
+            StatusCodes.Status500InternalServerError)
         {
-            _logger.LogError(
-                exception,
-                "Gözlənilməyən server xətası baş verdi.");
+            _logger.LogError(exception,"Gözlənilməyən server xətası baş verdi.");
         }
 
         var problemDetails = new ProblemDetails
         {
             Status = statusCode,
             Title = title,
-            Detail = statusCode == StatusCodes.Status500InternalServerError
+
+            Detail = statusCode ==
+                     StatusCodes.Status500InternalServerError
                 ? "Gözlənilməyən server xətası baş verdi."
                 : exception.Message,
+
             Instance = context.Request.Path
         };
 
@@ -85,8 +91,10 @@ public class ExceptionMiddleware
         }
 
         context.Response.StatusCode = statusCode;
-        context.Response.ContentType = "application/problem+json";
+        context.Response.ContentType =
+            "application/problem+json";
 
-        await context.Response.WriteAsJsonAsync(problemDetails);
+        await context.Response.WriteAsJsonAsync(
+            problemDetails);
     }
 }

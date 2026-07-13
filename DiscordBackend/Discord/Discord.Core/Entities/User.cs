@@ -1,5 +1,6 @@
 ﻿using Discord.Core.Entities.Common;
 using Discord.Core.Enums;
+using Discord.Core.Entities.Servers;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -22,5 +23,9 @@ namespace Discord.Core.Entities
         public DateTime? BannedUntil { get; set; }
         public ICollection<RefreshToken> RefreshTokens { get; set; }
             = new List<RefreshToken>();
+        public ICollection<Server> OwnedServers { get; set; }
+            = new List<Server>();
+        public ICollection<ServerMember> ServerMemberships { get; set; }
+            = new List<ServerMember>();
     }
 }

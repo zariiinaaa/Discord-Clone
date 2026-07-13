@@ -8,7 +8,8 @@ using Discord.Extensions;
 using Discord.Core.Entities;
 using Microsoft.AspNetCore.Identity;
 using Discord.Middleware;
-
+using Discord.Services;
+using Discord.Services.Interfaces;
 var builder = WebApplication.CreateBuilder(args);
 
 
@@ -22,6 +23,9 @@ builder.Services.AddJwtAuthentication(
 
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IFileStorageService,LocalFileStorageService>();
+builder.Services.AddScoped<IServerService, ServerService>();
 
 
 builder.Services.AddScoped<
@@ -36,8 +40,9 @@ var connectionString =
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(connectionString));
 
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+//builder.Services.AddEndpointsApiExplorer();
+//builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerDocumentation();
 
 var app = builder.Build();
 app.UseMiddleware<ExceptionMiddleware>();
