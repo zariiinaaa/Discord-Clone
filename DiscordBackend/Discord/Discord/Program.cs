@@ -26,6 +26,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IFileStorageService,LocalFileStorageService>();
 builder.Services.AddScoped<IServerService, ServerService>();
+builder.Services.AddScoped<IChannelService, ChannelService>();
 
 
 builder.Services.AddScoped<
