@@ -4,6 +4,7 @@ using Discord.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Discord.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260722092029_AddServerInvites")]
+    partial class AddServerInvites
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,53 +24,6 @@ namespace Discord.Infrastructure.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
-
-            modelBuilder.Entity("Discord.Core.Entities.Messages.Message", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("AuthorId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("ChannelId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Content")
-                        .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("nvarchar(4000)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("EditedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<bool>("IsPinned")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false);
-
-                    b.Property<int?>("ReplyToMessageId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AuthorId");
-
-                    b.HasIndex("ReplyToMessageId");
-
-                    b.HasIndex("ChannelId", "CreatedAt");
-
-                    b.ToTable("Messages", (string)null);
-                });
 
             modelBuilder.Entity("Discord.Core.Entities.RefreshToken", b =>
                 {
@@ -398,32 +354,6 @@ namespace Discord.Infrastructure.Migrations
                     b.ToTable("Users", (string)null);
                 });
 
-            modelBuilder.Entity("Discord.Core.Entities.Messages.Message", b =>
-                {
-                    b.HasOne("Discord.Core.Entities.User", "Author")
-                        .WithMany("SentMessages")
-                        .HasForeignKey("AuthorId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Discord.Core.Entities.Servers.Channel", "Channel")
-                        .WithMany("Messages")
-                        .HasForeignKey("ChannelId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Discord.Core.Entities.Messages.Message", "ReplyToMessage")
-                        .WithMany("Replies")
-                        .HasForeignKey("ReplyToMessageId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("Author");
-
-                    b.Navigation("Channel");
-
-                    b.Navigation("ReplyToMessage");
-                });
-
             modelBuilder.Entity("Discord.Core.Entities.RefreshToken", b =>
                 {
                     b.HasOne("Discord.Core.Entities.User", "User")
@@ -502,16 +432,9 @@ namespace Discord.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Discord.Core.Entities.Messages.Message", b =>
-                {
-                    b.Navigation("Replies");
-                });
-
             modelBuilder.Entity("Discord.Core.Entities.Servers.Channel", b =>
                 {
                     b.Navigation("ChildChannels");
-
-                    b.Navigation("Messages");
                 });
 
             modelBuilder.Entity("Discord.Core.Entities.Servers.Server", b =>
@@ -530,8 +453,6 @@ namespace Discord.Infrastructure.Migrations
                     b.Navigation("OwnedServers");
 
                     b.Navigation("RefreshTokens");
-
-                    b.Navigation("SentMessages");
 
                     b.Navigation("ServerMemberships");
                 });

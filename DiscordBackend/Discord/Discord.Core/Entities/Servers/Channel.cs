@@ -1,4 +1,5 @@
 ﻿using Discord.Core.Entities.Common;
+using Discord.Core.Entities.Messages;
 using Discord.Core.Enums;
 using System;
 using System.Collections.Generic;
@@ -19,7 +20,7 @@ namespace Discord.Core.Entities.Servers
         public Server Server { get; set; } = null!;
         public int? ParentCategoryId { get; set; }
         public Channel? ParentCategory { get; set; }
-        public ICollection<Channel> ChildChannels { get; set; }
-            = new List<Channel>();
+        public ICollection<Channel> ChildChannels { get; set; }= new List<Channel>();
+        public ICollection<Message> Messages { get; set; }= new List<Message>();
     }
 }

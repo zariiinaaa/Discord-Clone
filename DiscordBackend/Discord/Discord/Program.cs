@@ -27,14 +27,11 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IFileStorageService,LocalFileStorageService>();
 builder.Services.AddScoped<IServerService, ServerService>();
 builder.Services.AddScoped<IChannelService, ChannelService>();
-
-
-builder.Services.AddScoped<
-    IPasswordHasher<User>,
-    PasswordHasher<User>>();
-
-var connectionString =
-    builder.Configuration.GetConnectionString("Default")
+builder.Services.AddScoped<IServerInviteService,ServerInviteService>();
+builder.Services.AddScoped<IServerMemberService,ServerMemberService>();
+builder.Services.AddScoped<IPasswordHasher<User>,PasswordHasher<User>>();
+builder.Services.AddScoped<IMessageService,MessageService>();
+var connectionString =builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException(
         "Default connection string tapılmadı.");
 

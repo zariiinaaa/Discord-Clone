@@ -14,9 +14,9 @@ namespace Discord.Core.Entities.Servers
         public bool IsPublic { get; set; }
         public int OwnerId { get; set; }
         public User Owner { get; set; } = null!;
-        public ICollection<ServerMember> Members { get; set; }
-            = new List<ServerMember>();
-        public ICollection<Channel> Channels { get; set; }
-            = new List<Channel>();
+        public ICollection<ServerMember> Members { get; set; } = new List<ServerMember>();
+        public ICollection<Channel> Channels { get; set; }= new List<Channel>();
+
+        public ICollection<ServerInvite> Invites { get; set; }=new List<ServerInvite>();
     }
 }
