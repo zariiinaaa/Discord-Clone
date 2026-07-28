@@ -66,7 +66,7 @@ export default function SideMenuTrack({ servers }: SideMenuTrackProps) {
         */}
         {servers?.map((server) => (
           <ServerMenuItem
-            href={`/channels/${server.id}`}
+            href={`/servers/${server.id}`}
             key={server.id}
             server={server}
             isActive={active === server.id}

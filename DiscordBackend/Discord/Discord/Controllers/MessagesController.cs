@@ -2,8 +2,10 @@
 using Discord.Core.DTOs.Messages.Responses;
 using Discord.Core.Exceptions;
 using Discord.Core.Interfaces;
+using Discord.Hubs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using System.Security.Claims;
 
 namespace Discord.Controllers;
@@ -14,11 +16,11 @@ namespace Discord.Controllers;
 public class MessagesController : ControllerBase
 {
     private readonly IMessageService _messageService;
-
-    public MessagesController(
-        IMessageService messageService)
+    private readonly IHubContext<ChatHub, IChatClient> _chatHubContext;
+    public MessagesController(IMessageService messageService,IHubContext<ChatHub, IChatClient> chatHubContext)
     {
         _messageService = messageService;
+        _chatHubContext = chatHubContext;
     }
 
     [HttpGet]
@@ -60,6 +62,8 @@ public class MessagesController : ControllerBase
             request,
             cancellationToken);
 
+        await _chatHubContext.Clients.Group(ChatHub.GetChannelGroupName(channelId)).MessageCreated(result);
+
         return StatusCode(
             StatusCodes.Status201Created,
             result);
@@ -84,6 +88,8 @@ public class MessagesController : ControllerBase
             request,
             cancellationToken);
 
+        await _chatHubContext.Clients.Group(ChatHub.GetChannelGroupName(channelId)).MessageUpdated(result);
+
         return Ok(result);
     }
 
@@ -100,6 +106,7 @@ public class MessagesController : ControllerBase
             messageId,
             GetCurrentUserId(),
             cancellationToken);
+        await _chatHubContext.Clients.Group(ChatHub.GetChannelGroupName(channelId)).MessageDeleted(channelId, messageId);
 
         return NoContent();
     }

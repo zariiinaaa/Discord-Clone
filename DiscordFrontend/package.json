@@ -12,6 +12,7 @@
     "@faker-js/faker": "^8.0.2",
     "@livekit/components-react": "^1.1.7",
     "@livekit/components-styles": "^1.0.6",
+    "@microsoft/signalr": "^10.0.0",
     "@radix-ui/react-dialog": "^1.1.16",
     "@radix-ui/react-popover": "^1.1.16",
     "@radix-ui/react-select": "^2.3.0",

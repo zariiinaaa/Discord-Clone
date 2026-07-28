@@ -10,6 +10,8 @@ using Microsoft.AspNetCore.Identity;
 using Discord.Middleware;
 using Discord.Services;
 using Discord.Services.Interfaces;
+using Discord.Hubs;
+
 var builder = WebApplication.CreateBuilder(args);
 
 
@@ -20,6 +22,20 @@ builder.Services.AddValidatorsFromAssemblyContaining<
 
 builder.Services.AddJwtAuthentication(
     builder.Configuration);
+builder.Services.AddSignalR();
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("FrontendPolicy", policy =>
+    {
+        policy
+            .WithOrigins("http://localhost:3000")
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
+
 
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
@@ -31,6 +47,7 @@ builder.Services.AddScoped<IServerInviteService,ServerInviteService>();
 builder.Services.AddScoped<IServerMemberService,ServerMemberService>();
 builder.Services.AddScoped<IPasswordHasher<User>,PasswordHasher<User>>();
 builder.Services.AddScoped<IMessageService,MessageService>();
+builder.Services.AddScoped<IChannelAccessService,ChannelAccessService>();
 var connectionString =builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException(
         "Default connection string tapılmadı.");
@@ -51,9 +68,12 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseStaticFiles();
+
+app.UseCors("FrontendPolicy");
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<ChatHub>("/hubs/chat");
 
 app.Run();

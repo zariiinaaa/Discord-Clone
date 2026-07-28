@@ -8,11 +8,11 @@ namespace Discord.Extensions
 {
     public static class ServiceExtensions
     {
-        public static IServiceCollection AddJwtAuthentication(
-       this IServiceCollection services,
-       IConfiguration configuration)
+        public static IServiceCollection AddJwtAuthentication(this IServiceCollection services,
+            IConfiguration configuration)
         {
-            var jwtSection = configuration.GetSection("JwtSettings");
+            var jwtSection =
+                configuration.GetSection("JwtSettings");
 
             services.Configure<JwtSettings>(jwtSection);
 
@@ -49,13 +49,37 @@ namespace Discord.Extensions
                             ValidIssuer = jwtSettings.Issuer,
                             ValidAudience = jwtSettings.Audience,
 
-                            IssuerSigningKey = new SymmetricSecurityKey(
-                                Encoding.UTF8.GetBytes(jwtSettings.Secret)),
+                            IssuerSigningKey =
+                                new SymmetricSecurityKey(
+                                    Encoding.UTF8.GetBytes(
+                                        jwtSettings.Secret)),
 
                             ClockSkew = TimeSpan.Zero,
                             NameClaimType = ClaimTypes.Name,
                             RoleClaimType = ClaimTypes.Role
                         };
+
+                    options.Events = new JwtBearerEvents
+                    {
+                        OnMessageReceived = context =>
+                        {
+                            var accessToken = context.Request
+                                .Query["access_token"]
+                                .ToString();
+
+                            var requestPath =
+                                context.HttpContext.Request.Path;
+
+                            if (!string.IsNullOrWhiteSpace(accessToken) &&
+                                requestPath.StartsWithSegments(
+                                    "/hubs/chat"))
+                            {
+                                context.Token = accessToken;
+                            }
+
+                            return Task.CompletedTask;
+                        }
+                    };
                 });
 
             services.AddAuthorization();

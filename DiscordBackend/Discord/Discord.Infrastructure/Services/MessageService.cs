@@ -16,19 +16,20 @@ public class MessageService : IMessageService
 {
     private readonly AppDbContext _dbContext;
 
-    private readonly IValidator<CreateMessageRequestDto>
-        _createMessageValidator;
+    private readonly IValidator<CreateMessageRequestDto> _createMessageValidator;
 
-    private readonly IValidator<UpdateMessageRequestDto>
-        _updateMessageValidator;
+    private readonly IValidator<UpdateMessageRequestDto> _updateMessageValidator;
+
+    private readonly IChannelAccessService _channelAccessService;
 
     public MessageService(AppDbContext dbContext,IValidator<CreateMessageRequestDto>createMessageValidator,
         IValidator<UpdateMessageRequestDto>
-            updateMessageValidator)
+            updateMessageValidator, IChannelAccessService channelAccessService)
     {
         _dbContext = dbContext;
         _createMessageValidator = createMessageValidator;
         _updateMessageValidator = updateMessageValidator;
+        _channelAccessService = channelAccessService;
     }
 
     public async Task<
@@ -40,7 +41,7 @@ public class MessageService : IMessageService
             int limit = 50,
             CancellationToken cancellationToken = default)
     {
-        await GetAccessibleTextChannelAsync(channelId,userId,
+        await _channelAccessService.GetAccessibleTextChannelAsync(channelId,userId,
             cancellationToken);
 
         if (limit is < 1 or > 100)
@@ -89,7 +90,7 @@ public class MessageService : IMessageService
             throw new ValidationException(validationResult.Errors);
         }
 
-        await GetAccessibleTextChannelAsync(channelId,userId,cancellationToken);
+        await _channelAccessService.GetAccessibleTextChannelAsync(channelId,userId,cancellationToken);
 
         if (request.ReplyToMessageId.HasValue)
         {
@@ -147,7 +148,7 @@ public class MessageService : IMessageService
                 validationResult.Errors);
         }
 
-        await GetAccessibleTextChannelAsync(channelId,userId,
+        await _channelAccessService.GetAccessibleTextChannelAsync(channelId,userId,
             cancellationToken);
 
         var message = await _dbContext.Messages
@@ -178,7 +179,7 @@ public class MessageService : IMessageService
     public async Task DeleteAsync(int channelId,int messageId, int userId,
         CancellationToken cancellationToken = default)
     {
-        var channel = await GetAccessibleTextChannelAsync(channelId,userId,cancellationToken);
+        var channel = await _channelAccessService.GetAccessibleTextChannelAsync(channelId,userId,cancellationToken);
 
         var message = await _dbContext.Messages
             .FirstOrDefaultAsync(
@@ -228,34 +229,5 @@ public class MessageService : IMessageService
             cancellationToken);
     }
 
-    private async Task<Channel>
-        GetAccessibleTextChannelAsync(int channelId,int userId,CancellationToken cancellationToken)
-    {
-        var channel = await _dbContext.Channels
-            .AsNoTracking()
-            .Include(channel => channel.Server)
-            .FirstOrDefaultAsync(
-                channel => channel.Id == channelId,
-                cancellationToken)
-            ?? throw new KeyNotFoundException("Kanal tapılmadı.");
-
-        if (channel.Type != ChannelType.Text)
-        {
-            throw new BadRequestException("Mesaj yalnız text kanala göndərilə bilər.");
-        }
-
-        var isMember =
-            await _dbContext.ServerMembers.AnyAsync(
-                member =>
-                    member.ServerId == channel.ServerId &&
-                    member.UserId == userId,
-                cancellationToken);
-
-        if (!isMember)
-        {
-            throw new ForbiddenException( "Yalnız server üzvləri kanal mesajlarını görə bilər.");
-        }
-
-        return channel;
-    }
+    
 }

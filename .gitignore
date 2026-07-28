@@ -4,12 +4,21 @@ obj/
 **/bin/
 **/obj/
 
+**/wwwroot/uploads/
+
 node_modules/
 **/node_modules/
+
+.next/
+out/
 dist/
 build/
+.vercel/
 
 .env
+.env.*
+!.env.example
+
 appsettings.Development.json
 
 *.user
