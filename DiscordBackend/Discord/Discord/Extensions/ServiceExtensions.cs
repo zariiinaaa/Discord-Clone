@@ -70,9 +70,9 @@ namespace Discord.Extensions
                             var requestPath =
                                 context.HttpContext.Request.Path;
 
-                            if (!string.IsNullOrWhiteSpace(accessToken) &&
-                                requestPath.StartsWithSegments(
-                                    "/hubs/chat"))
+                            if (!string.IsNullOrWhiteSpace(accessToken) &&(requestPath.StartsWithSegments
+                            ("/hubs/chat") ||requestPath.StartsWithSegments
+                            ("/hubs/voice")))
                             {
                                 context.Token = accessToken;
                             }

@@ -25,4 +25,21 @@ public interface IMessageService
     Task DeleteAsync(int channelId,int messageId,
         int userId,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyCollection<MessageResponseDto>> GetConversationMessagesAsync(int conversationId,int userId,
+        int? beforeMessageId = null,
+        int limit = 50,
+        CancellationToken cancellationToken = default);
+
+    Task<MessageResponseDto>CreateConversationMessageAsync(int conversationId,int userId,
+            CreateMessageRequestDto request,
+            CancellationToken cancellationToken = default);
+
+
+    Task<MessageResponseDto>UpdateConversationMessageAsync(int conversationId,int messageId,int userId,
+            UpdateMessageRequestDto request,
+            CancellationToken cancellationToken = default);
+
+    Task DeleteConversationMessageAsync(int conversationId, int messageId,int userId,
+        CancellationToken cancellationToken = default);
 }

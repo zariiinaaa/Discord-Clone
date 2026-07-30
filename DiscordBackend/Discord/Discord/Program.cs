@@ -24,6 +24,8 @@ builder.Services.AddJwtAuthentication(
     builder.Configuration);
 builder.Services.AddSignalR();
 
+builder.Services.AddSingleton<VoiceConnectionTracker>();
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("FrontendPolicy", policy =>
@@ -48,6 +50,12 @@ builder.Services.AddScoped<IServerMemberService,ServerMemberService>();
 builder.Services.AddScoped<IPasswordHasher<User>,PasswordHasher<User>>();
 builder.Services.AddScoped<IMessageService,MessageService>();
 builder.Services.AddScoped<IChannelAccessService,ChannelAccessService>();
+builder.Services.AddScoped<IFriendService, FriendService>();
+builder.Services.AddScoped<IConversationAccessService,ConversationAccessService>();
+builder.Services.AddScoped<IConversationService,ConversationService>();
+builder.Services.AddScoped<IDirectMessageRequestService,DirectMessageRequestService>();
+
+
 var connectionString =builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException(
         "Default connection string tapılmadı.");
@@ -75,5 +83,5 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<ChatHub>("/hubs/chat");
-
+app.MapHub<VoiceHub>("/hubs/voice");
 app.Run();

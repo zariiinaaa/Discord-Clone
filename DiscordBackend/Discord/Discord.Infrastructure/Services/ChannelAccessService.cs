@@ -16,12 +16,32 @@ public class ChannelAccessService : IChannelAccessService
         _dbContext = dbContext;
     }
 
-    public async Task<Channel>
-        GetAccessibleTextChannelAsync(int channelId, int userId,
+    public Task<Channel> GetAccessibleTextChannelAsync(int channelId,int userId,
             CancellationToken cancellationToken = default)
     {
-        var channel = await _dbContext.Channels
-            .AsNoTracking()
+        return GetAccessibleChannelAsync(channelId,userId,
+            ChannelType.Text,
+            "Bu əməliyyat yalnız text kanal üçün mümkündür.",
+            cancellationToken);
+    }
+
+    public Task<Channel> GetAccessibleVoiceChannelAsync(int channelId,int userId,
+            CancellationToken cancellationToken = default)
+    {
+        return GetAccessibleChannelAsync(
+            channelId,
+            userId,
+            ChannelType.Voice,
+            "Bu əməliyyat yalnız voice kanal üçün mümkündür.",
+            cancellationToken);
+    }
+
+    private async Task<Channel>GetAccessibleChannelAsync(int channelId, int userId,
+            ChannelType requiredType,
+            string invalidChannelMessage,
+            CancellationToken cancellationToken)
+    {
+        var channel = await _dbContext.Channels.AsNoTracking()
             .Include(channel => channel.Server)
             .FirstOrDefaultAsync(
                 channel => channel.Id == channelId,
@@ -29,21 +49,22 @@ public class ChannelAccessService : IChannelAccessService
             ?? throw new KeyNotFoundException(
                 "Kanal tapılmadı.");
 
-        if (channel.Type != ChannelType.Text)
+        if (channel.Type != requiredType)
         {
-            throw new BadRequestException("Bu əməliyyat yalnız text kanal üçün mümkündür.");
+            throw new BadRequestException(invalidChannelMessage);
         }
 
         var isMember =
-            await _dbContext.ServerMembers.AnyAsync(
-                member =>
-                    member.ServerId == channel.ServerId &&
-                    member.UserId == userId,
-                cancellationToken);
+            await _dbContext.ServerMembers.AsNoTracking().AnyAsync(
+                    member =>
+                        member.ServerId ==
+                            channel.ServerId &&
+                        member.UserId == userId,
+                    cancellationToken);
 
         if (!isMember)
         {
-            throw new ForbiddenException("Yalnız server üzvləri kanala daxil ola bilər.");
+            throw new ForbiddenException( "Yalnız server üzvləri kanala daxil ola bilər.");
         }
 
         return channel;

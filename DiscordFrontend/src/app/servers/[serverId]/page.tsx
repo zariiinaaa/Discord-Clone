@@ -3,12 +3,18 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+
 import {
   ChannelResponse,
   getServerById,
   ServerDetailsResponse,
 } from "@/lib/serverApi";
+
 import { useAuthStore } from "@/state/auth";
+
+import {
+  useVoice,
+} from "@/components/voice/voice-provider";
 
 const CHANNEL_TYPE = {
   Text: 0,
@@ -23,19 +29,19 @@ function ChannelItem({
   channel: ChannelResponse;
   serverId: number;
 }) {
-  const content = (
-    <>
-      <span className="w-5 text-center text-lg">
-        {channel.type === CHANNEL_TYPE.Voice
-          ? "🔊"
-          : "#"}
-      </span>
+  const {
+    activeChannelId,
+    participants,
+    status,
+    joinVoiceChannel,
+    leaveVoiceChannel,
+  } = useVoice();
 
-      <span className="truncate">
-        {channel.name}
-      </span>
-    </>
-  );
+  const [isChangingVoice, setIsChangingVoice] =
+    useState(false);
+
+  const [voiceError, setVoiceError] =
+    useState<string | null>(null);
 
   const className =
     "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-gray-400 hover:bg-white/5 hover:text-gray-200";
@@ -46,18 +52,117 @@ function ChannelItem({
         href={`/servers/${serverId}/channels/${channel.id}`}
         className={className}
       >
-        {content}
+        <span className="w-5 text-center text-lg">
+          #
+        </span>
+
+        <span className="truncate">
+          {channel.name}
+        </span>
       </Link>
     );
   }
 
+  if (channel.type !== CHANNEL_TYPE.Voice) {
+    return null;
+  }
+
+  const isActive =
+    activeChannelId === channel.id;
+
+  const handleVoiceClick = async () => {
+    if (isChangingVoice) {
+      return;
+    }
+
+    try {
+      setIsChangingVoice(true);
+      setVoiceError(null);
+
+      if (isActive) {
+        await leaveVoiceChannel();
+      } else {
+        await joinVoiceChannel(channel.id);
+      }
+    } catch (error) {
+      setVoiceError(
+        error instanceof Error
+          ? error.message
+          : "Voice kanalına qoşulmaq alınmadı."
+      );
+    } finally {
+      setIsChangingVoice(false);
+    }
+  };
+
+  const statusText =
+    status === "connecting"
+      ? "Qoşulur..."
+      : status === "connected"
+        ? "Voice bağlıdır"
+        : status === "reconnecting"
+          ? "Yenidən qoşulur..."
+          : "Bağlantı kəsilib";
+
   return (
-    <button
-      type="button"
-      className={className}
-    >
-      {content}
-    </button>
+    <div className="mb-1">
+      <button
+        type="button"
+        onClick={handleVoiceClick}
+        disabled={isChangingVoice}
+        className={`${className} ${
+          isActive
+            ? "bg-white/10 text-green-300"
+            : ""
+        } disabled:cursor-wait disabled:opacity-60`}
+      >
+        <span className="w-5 text-center text-lg">
+          🔊
+        </span>
+
+        <span className="min-w-0 flex-1 truncate">
+          {channel.name}
+        </span>
+
+        {isActive && (
+          <span className="h-2 w-2 flex-none rounded-full bg-green-500" />
+        )}
+      </button>
+
+      {isActive && (
+        <div className="ml-9 mt-1 space-y-1">
+          <p className="text-[11px] text-green-400">
+            {statusText}
+          </p>
+
+          {participants.map(participant => (
+            <div
+              key={participant.userId}
+              className="flex items-center gap-2 py-0.5 text-xs text-gray-300"
+            >
+              <span className="h-2 w-2 flex-none rounded-full bg-green-500" />
+
+              <span className="truncate">
+                {participant.displayName}
+              </span>
+            </div>
+          ))}
+
+          {status === "connected" &&
+            participants.length === 0 && (
+              <p className="text-xs text-gray-500">
+                İştirakçılar gözlənilir...
+              </p>
+            )}
+        </div>
+      )}
+
+      {voiceError && (
+        <p className="ml-9 mt-1 text-xs text-red-400">
+          {voiceError}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -87,7 +192,10 @@ export default function ServerPage() {
       !Number.isInteger(serverId) ||
       serverId <= 0
     ) {
-      setError("Server məlumatı düzgün deyil.");
+      setError(
+        "Server məlumatı düzgün deyil."
+      );
+
       setIsLoading(false);
       return;
     }
@@ -99,10 +207,11 @@ export default function ServerPage() {
         setIsLoading(true);
         setError(null);
 
-        const response = await getServerById(
-          serverId,
-          accessToken
-        );
+        const response =
+          await getServerById(
+            serverId,
+            accessToken
+          );
 
         if (!isCancelled) {
           setServer(response);
@@ -127,7 +236,10 @@ export default function ServerPage() {
     return () => {
       isCancelled = true;
     };
-  }, [params.serverId, accessToken]);
+  }, [
+    params.serverId,
+    accessToken,
+  ]);
 
   if (isLoading) {
     return (
@@ -147,16 +259,18 @@ export default function ServerPage() {
     );
   }
 
-  const categories = server.channels
-    .filter(
-      channel =>
-        channel.type ===
-        CHANNEL_TYPE.Category
-    )
-    .sort(
-      (first, second) =>
-        first.position - second.position
-    );
+  const categories =
+    server.channels
+      .filter(
+        channel =>
+          channel.type ===
+          CHANNEL_TYPE.Category
+      )
+      .sort(
+        (first, second) =>
+          first.position -
+          second.position
+      );
 
   const uncategorizedChannels =
     server.channels
@@ -168,7 +282,8 @@ export default function ServerPage() {
       )
       .sort(
         (first, second) =>
-          first.position - second.position
+          first.position -
+          second.position
       );
 
   return (
@@ -221,13 +336,15 @@ export default function ServerPage() {
                 </h2>
 
                 {childChannels.length > 0 ? (
-                  childChannels.map(channel => (
-                    <ChannelItem
-                      key={channel.id}
-                      channel={channel}
-                      serverId={server.id}
-                    />
-                  ))
+                  childChannels.map(
+                    channel => (
+                      <ChannelItem
+                        key={channel.id}
+                        channel={channel}
+                        serverId={server.id}
+                      />
+                    )
+                  )
                 ) : (
                   <p className="px-2 py-1 text-xs text-gray-500">
                     Kanal yoxdur
@@ -250,8 +367,8 @@ export default function ServerPage() {
           </h2>
 
           <p className="mt-2 text-sm text-gray-400">
-            Mesajları görmək üçün text kanal
-            seçin.
+            Text kanal seçərək mesajları görə
+            və ya voice kanala qoşula bilərsiniz.
           </p>
         </div>
       </section>

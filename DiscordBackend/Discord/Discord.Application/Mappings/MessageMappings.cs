@@ -5,13 +5,15 @@ namespace Discord.Application.Mappings;
 
 public static class MessageMappings
 {
-    public static MessageResponseDto ToResponseDto(this Message message)
+    public static MessageResponseDto ToResponseDto(
+        this Message message)
     {
         return new MessageResponseDto
         {
             Id = message.Id,
             Content = message.Content,
             ChannelId = message.ChannelId,
+            ConversationId = message.ConversationId,
             AuthorId = message.AuthorId,
             AuthorUsername = message.Author.Username,
             AuthorDisplayName = message.Author.DisplayName,

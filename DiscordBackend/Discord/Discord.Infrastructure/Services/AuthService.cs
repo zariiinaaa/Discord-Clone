@@ -1,14 +1,15 @@
-﻿using Discord.Core.DTOs.Auth.Requests;
+﻿using Discord.Application.Mappings;
+using Discord.Core.DTOs.Auth.Requests;
 using Discord.Core.DTOs.Auth.Responses;
 using Discord.Core.Entities;
+using Discord.Core.Entities.Privacy;
 using Discord.Core.Enums;
 using Discord.Core.Exceptions;
 using Discord.Core.Interfaces;
 using Discord.Infrastructure.Data;
 using FluentValidation;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
-using Discord.Application.Mappings;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -82,7 +83,13 @@ namespace Discord.Infrastructure.Services
                 Email = email,
                 Status = UserStatus.Online,
                 Role = PlatformRole.User,
-                LastSeenAt = DateTime.UtcNow
+                LastSeenAt = DateTime.UtcNow,
+
+                PrivacySettings = new UserPrivacySettings
+                {
+                    AllowDirectMessagesFromServerMembers = true,
+                    EnableMessageRequests = true
+                }
             };
 
             user.PasswordHash = _passwordHasher.HashPassword(

@@ -22,6 +22,235 @@ namespace Discord.Infrastructure.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("Discord.Core.Entities.Conversations.Conversation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("IconUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int?>("OwnerId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("Type");
+
+                    b.ToTable("Conversations", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Conversations_TypeOwner", "([Type] = 0 AND [OwnerId] IS NULL) OR ([Type] = 1 AND [OwnerId] IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Conversations.ConversationMember", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ConversationId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsMuted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("ConversationId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("ConversationMembers", (string)null);
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Conversations.DirectMessageRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ConversationId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RecipientId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("RespondedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("SenderId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SenderId");
+
+                    b.HasIndex("ConversationId", "RecipientId")
+                        .IsUnique();
+
+                    b.HasIndex("RecipientId", "Status");
+
+                    b.ToTable("DirectMessageRequests", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_DirectMessageRequests_DifferentUsers", "[SenderId] <> [RecipientId]");
+                        });
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Friends.FriendRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("ReceiverId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("RespondedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("SenderId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReceiverId", "Status");
+
+                    b.HasIndex("SenderId", "ReceiverId")
+                        .IsUnique()
+                        .HasFilter("[Status] = 0");
+
+                    b.HasIndex("SenderId", "Status");
+
+                    b.ToTable("FriendRequests", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_FriendRequests_DifferentUsers", "[SenderId] <> [ReceiverId]");
+                        });
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Friends.Friendship", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("FriendId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FriendId");
+
+                    b.HasIndex("UserId", "FriendId")
+                        .IsUnique();
+
+                    b.ToTable("Friendships", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Friendships_UserOrder", "[UserId] < [FriendId]");
+                        });
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Friends.UserBlock", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BlockedUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("BlockerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BlockedUserId");
+
+                    b.HasIndex("BlockerId", "BlockedUserId")
+                        .IsUnique();
+
+                    b.ToTable("UserBlocks", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_UserBlocks_DifferentUsers", "[BlockerId] <> [BlockedUserId]");
+                        });
+                });
+
             modelBuilder.Entity("Discord.Core.Entities.Messages.Message", b =>
                 {
                     b.Property<int>("Id")
@@ -33,13 +262,16 @@ namespace Discord.Infrastructure.Migrations
                     b.Property<int>("AuthorId")
                         .HasColumnType("int");
 
-                    b.Property<int>("ChannelId")
+                    b.Property<int?>("ChannelId")
                         .HasColumnType("int");
 
                     b.Property<string>("Content")
                         .IsRequired()
                         .HasMaxLength(4000)
                         .HasColumnType("nvarchar(4000)");
+
+                    b.Property<int?>("ConversationId")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -66,7 +298,47 @@ namespace Discord.Infrastructure.Migrations
 
                     b.HasIndex("ChannelId", "CreatedAt");
 
-                    b.ToTable("Messages", (string)null);
+                    b.HasIndex("ConversationId", "CreatedAt");
+
+                    b.ToTable("Messages", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Messages_Parent", "([ChannelId] IS NOT NULL AND [ConversationId] IS NULL) OR ([ChannelId] IS NULL AND [ConversationId] IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Privacy.UserPrivacySettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("AllowDirectMessagesFromServerMembers")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("EnableMessageRequests")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("UserPrivacySettings", (string)null);
                 });
 
             modelBuilder.Entity("Discord.Core.Entities.RefreshToken", b =>
@@ -283,8 +555,14 @@ namespace Discord.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<bool?>("AllowDirectMessages")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<bool?>("EnableMessageRequests")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("IsDeafened")
                         .ValueGeneratedOnAdd()
@@ -398,6 +676,119 @@ namespace Discord.Infrastructure.Migrations
                     b.ToTable("Users", (string)null);
                 });
 
+            modelBuilder.Entity("Discord.Core.Entities.Conversations.Conversation", b =>
+                {
+                    b.HasOne("Discord.Core.Entities.User", "Owner")
+                        .WithMany("OwnedConversations")
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Owner");
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Conversations.ConversationMember", b =>
+                {
+                    b.HasOne("Discord.Core.Entities.Conversations.Conversation", "Conversation")
+                        .WithMany("Members")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Discord.Core.Entities.User", "User")
+                        .WithMany("ConversationMemberships")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Conversations.DirectMessageRequest", b =>
+                {
+                    b.HasOne("Discord.Core.Entities.Conversations.Conversation", "Conversation")
+                        .WithMany("MessageRequests")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Discord.Core.Entities.User", "Recipient")
+                        .WithMany("ReceivedDirectMessageRequests")
+                        .HasForeignKey("RecipientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Discord.Core.Entities.User", "Sender")
+                        .WithMany("SentDirectMessageRequests")
+                        .HasForeignKey("SenderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+
+                    b.Navigation("Recipient");
+
+                    b.Navigation("Sender");
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Friends.FriendRequest", b =>
+                {
+                    b.HasOne("Discord.Core.Entities.User", "Receiver")
+                        .WithMany("ReceivedFriendRequests")
+                        .HasForeignKey("ReceiverId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Discord.Core.Entities.User", "Sender")
+                        .WithMany("SentFriendRequests")
+                        .HasForeignKey("SenderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Receiver");
+
+                    b.Navigation("Sender");
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Friends.Friendship", b =>
+                {
+                    b.HasOne("Discord.Core.Entities.User", "Friend")
+                        .WithMany("FriendshipsAsFriend")
+                        .HasForeignKey("FriendId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Discord.Core.Entities.User", "User")
+                        .WithMany("FriendshipsAsUser")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Friend");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Friends.UserBlock", b =>
+                {
+                    b.HasOne("Discord.Core.Entities.User", "BlockedUser")
+                        .WithMany("BlockedByUsers")
+                        .HasForeignKey("BlockedUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Discord.Core.Entities.User", "Blocker")
+                        .WithMany("BlockedUsers")
+                        .HasForeignKey("BlockerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("BlockedUser");
+
+                    b.Navigation("Blocker");
+                });
+
             modelBuilder.Entity("Discord.Core.Entities.Messages.Message", b =>
                 {
                     b.HasOne("Discord.Core.Entities.User", "Author")
@@ -409,8 +800,12 @@ namespace Discord.Infrastructure.Migrations
                     b.HasOne("Discord.Core.Entities.Servers.Channel", "Channel")
                         .WithMany("Messages")
                         .HasForeignKey("ChannelId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("Discord.Core.Entities.Conversations.Conversation", "Conversation")
+                        .WithMany("Messages")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.HasOne("Discord.Core.Entities.Messages.Message", "ReplyToMessage")
                         .WithMany("Replies")
@@ -421,7 +816,20 @@ namespace Discord.Infrastructure.Migrations
 
                     b.Navigation("Channel");
 
+                    b.Navigation("Conversation");
+
                     b.Navigation("ReplyToMessage");
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Privacy.UserPrivacySettings", b =>
+                {
+                    b.HasOne("Discord.Core.Entities.User", "User")
+                        .WithOne("PrivacySettings")
+                        .HasForeignKey("Discord.Core.Entities.Privacy.UserPrivacySettings", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Discord.Core.Entities.RefreshToken", b =>
@@ -502,6 +910,15 @@ namespace Discord.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Discord.Core.Entities.Conversations.Conversation", b =>
+                {
+                    b.Navigation("Members");
+
+                    b.Navigation("MessageRequests");
+
+                    b.Navigation("Messages");
+                });
+
             modelBuilder.Entity("Discord.Core.Entities.Messages.Message", b =>
                 {
                     b.Navigation("Replies");
@@ -525,11 +942,33 @@ namespace Discord.Infrastructure.Migrations
 
             modelBuilder.Entity("Discord.Core.Entities.User", b =>
                 {
+                    b.Navigation("BlockedByUsers");
+
+                    b.Navigation("BlockedUsers");
+
+                    b.Navigation("ConversationMemberships");
+
                     b.Navigation("CreatedServerInvites");
+
+                    b.Navigation("FriendshipsAsFriend");
+
+                    b.Navigation("FriendshipsAsUser");
+
+                    b.Navigation("OwnedConversations");
 
                     b.Navigation("OwnedServers");
 
+                    b.Navigation("PrivacySettings");
+
+                    b.Navigation("ReceivedDirectMessageRequests");
+
+                    b.Navigation("ReceivedFriendRequests");
+
                     b.Navigation("RefreshTokens");
+
+                    b.Navigation("SentDirectMessageRequests");
+
+                    b.Navigation("SentFriendRequests");
 
                     b.Navigation("SentMessages");
 

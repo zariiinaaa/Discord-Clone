@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import { Open_Sans } from "next/font/google";
+
 import CommonLayout from "@/components/layout/common-layout";
 import CurrentUserLoader from "@/components/current-user-loader";
+import { VoiceProvider } from "@/components/voice/voice-provider";
+import VoiceControlsPanel from "@/components/voice/voice-controls-panel";
+
 import "./globals.css";
 
 const mainFont = Open_Sans({
@@ -19,9 +23,15 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={mainFont.className + " dark"}>
-        <CurrentUserLoader />
-        <CommonLayout />
-        {children}
+        <VoiceProvider>
+          <CurrentUserLoader />
+
+          <CommonLayout />
+
+          <VoiceControlsPanel />
+
+          {children}
+        </VoiceProvider>
       </body>
     </html>
   );
