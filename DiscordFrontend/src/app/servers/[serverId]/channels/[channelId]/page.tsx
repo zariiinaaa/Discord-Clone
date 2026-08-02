@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import type { FormEvent } from "react";
-import type { HubConnection } from "@microsoft/signalr";
+
 import { useParams } from "next/navigation";
 
 import {
@@ -23,7 +23,13 @@ import {
   type MessageResponse,
 } from "@/lib/messageApi";
 
-import { createChatHubConnection } from "@/lib/chatHub";
+import {
+  HubConnectionState,
+} from "@microsoft/signalr";
+
+import {
+  useChatHub,
+} from "@/components/chat/chat-hub-provider";
 import { useAuthStore } from "@/state/auth";
 import { useCurrentUserStore } from "@/state/user";
 import { API_URL } from "@/lib/api";
@@ -64,8 +70,13 @@ export default function ChannelPage() {
       state => state.currentUser
     );
 
-  const connectionRef =
-    useRef<HubConnection | null>(null);
+  const {
+  connection,
+  status: chatHubStatus,
+} = useChatHub();
+
+
+ 
 
   const messageInputRef =
     useRef<HTMLInputElement | null>(null);
@@ -235,227 +246,231 @@ export default function ChannelPage() {
     accessToken,
   ]);
 
-  useEffect(() => {
-    const channelId = Number(
-      params.channelId
-    );
+useEffect(() => {
+  const channelId = Number(
+    params.channelId
+  );
 
+  if (
+    !connection ||
+    !accessToken ||
+    !Number.isInteger(channelId) ||
+    channelId <= 0
+  ) {
+    setIsRealtimeConnected(false);
+    return;
+  }
+
+  if (chatHubStatus !== "connected") {
+    setIsRealtimeConnected(false);
+    return;
+  }
+
+  let isCancelled = false;
+
+  const handleMessageCreated = (
+    message: MessageResponse
+  ) => {
     if (
-      !accessToken ||
-      !Number.isInteger(channelId) ||
-      channelId <= 0
+      message.channelId !== channelId
     ) {
       return;
     }
 
-    let isCancelled = false;
-
-    setIsRealtimeConnected(false);
-
-    const connection =
-      createChatHubConnection(accessToken);
-
-    connectionRef.current = connection;
-
-    const handleMessageCreated = (
-      message: MessageResponse
-    ) => {
-      if (
-        message.channelId !== channelId
-      ) {
-        return;
-      }
-
-      setMessages(currentMessages => {
-        const alreadyExists =
-          currentMessages.some(
-            currentMessage =>
-              currentMessage.id ===
-              message.id
-          );
-
-        if (alreadyExists) {
-          return currentMessages;
-        }
-
-        return [
-          ...currentMessages,
-          message,
-        ];
-      });
-    };
-
-    const handleMessageUpdated = (
-      message: MessageResponse
-    ) => {
-      if (
-        message.channelId !== channelId
-      ) {
-        return;
-      }
-
-      setMessages(currentMessages =>
-        currentMessages.map(
+    setMessages(currentMessages => {
+      const alreadyExists =
+        currentMessages.some(
           currentMessage =>
             currentMessage.id ===
             message.id
-              ? message
-              : currentMessage
-        )
-      );
+        );
 
-      setReplyingToMessage(
+      if (alreadyExists) {
+        return currentMessages;
+      }
+
+      return [
+        ...currentMessages,
+        message,
+      ];
+    });
+  };
+
+  const handleMessageUpdated = (
+  message: MessageResponse
+) => {
+  if (
+    message.channelId !== channelId
+  ) {
+    return;
+  }
+
+  setMessages(currentMessages =>
+    currentMessages.map(
+      currentMessage =>
+        currentMessage.id ===
+        message.id
+          ? message
+          : currentMessage
+    )
+  );
+
+  setReplyingToMessage(
+    currentMessage =>
+      currentMessage?.id ===
+      message.id
+        ? message
+        : currentMessage
+  );
+};
+ (
+    message: MessageResponse
+  ) => {
+    if (
+      message.channelId !== channelId
+    ) {
+      return;
+    }
+
+    setMessages(currentMessages =>
+      currentMessages.map(
         currentMessage =>
-          currentMessage?.id ===
+          currentMessage.id ===
           message.id
             ? message
             : currentMessage
-      );
-    };
+      )
+    );
 
-    const handleMessageDeleted = (
-      deletedChannelId: number,
-      messageId: number
-    ) => {
-      if (
-        deletedChannelId !== channelId
-      ) {
-        return;
+    setReplyingToMessage(
+      currentMessage =>
+        currentMessage?.id ===
+        message.id
+          ? message
+          : currentMessage
+    );
+  };
+
+  const handleMessageDeleted = (
+    deletedChannelId: number,
+    messageId: number
+  ) => {
+    if (
+      deletedChannelId !== channelId
+    ) {
+      return;
+    }
+
+    setMessages(currentMessages =>
+      currentMessages.filter(
+        message =>
+          message.id !== messageId
+      )
+    );
+
+    setEditingMessageId(
+      currentMessageId =>
+        currentMessageId === messageId
+          ? null
+          : currentMessageId
+    );
+
+    setReplyingToMessage(
+      currentMessage =>
+        currentMessage?.id ===
+        messageId
+          ? null
+          : currentMessage
+    );
+  };
+
+  connection.on(
+    "MessageCreated",
+    handleMessageCreated
+  );
+
+  connection.on(
+    "MessageUpdated",
+    handleMessageUpdated
+  );
+
+  connection.on(
+    "MessageDeleted",
+    handleMessageDeleted
+  );
+
+  const joinChannel = async () => {
+    try {
+      await connection.invoke(
+        "JoinChannel",
+        channelId
+      );
+
+      if (!isCancelled) {
+        setIsRealtimeConnected(true);
       }
+    } catch (connectionError) {
+      if (!isCancelled) {
+        setIsRealtimeConnected(false);
 
-      setMessages(currentMessages =>
-        currentMessages.filter(
-          message =>
-            message.id !== messageId
-        )
-      );
+        console.error(
+          "Channel could not be joined:",
+          connectionError
+        );
+      }
+    }
+  };
 
-      setEditingMessageId(
-        currentMessageId =>
-          currentMessageId === messageId
-            ? null
-            : currentMessageId
-      );
+  void joinChannel();
 
-      setReplyingToMessage(
-        currentMessage =>
-          currentMessage?.id ===
-          messageId
-            ? null
-            : currentMessage
-      );
-    };
+  return () => {
+    isCancelled = true;
 
-    connection.on(
+    connection.off(
       "MessageCreated",
       handleMessageCreated
     );
 
-    connection.on(
+    connection.off(
       "MessageUpdated",
       handleMessageUpdated
     );
 
-    connection.on(
+    connection.off(
       "MessageDeleted",
       handleMessageDeleted
     );
 
-    connection.onreconnecting(() => {
-      if (!isCancelled) {
-        setIsRealtimeConnected(false);
-      }
-    });
+    setIsRealtimeConnected(false);
 
-    connection.onreconnected(async () => {
-      if (isCancelled) {
-        return;
-      }
-
-      try {
-        await connection.invoke(
-          "JoinChannel",
-          channelId
-        );
-
-        setIsRealtimeConnected(true);
-      } catch (reconnectError) {
-        console.error(
-          "Kanala yenidən qoşulmaq mümkün olmadı:",
-          reconnectError
-        );
-      }
-    });
-
-    connection.onclose(() => {
-      if (!isCancelled) {
-        setIsRealtimeConnected(false);
-      }
-    });
-
-    const startConnection =
-      async () => {
-        try {
-          await connection.start();
-
-          if (isCancelled) {
-            await connection.stop();
-            return;
-          }
-
-          await connection.invoke(
-            "JoinChannel",
-            channelId
-          );
-
-          setIsRealtimeConnected(true);
-        } catch (connectionError) {
-          if (!isCancelled) {
-            setIsRealtimeConnected(false);
-
-            console.error(
-              "SignalR bağlantısı qurulmadı:",
-              connectionError
-            );
-          }
-        }
-      };
-
-    void startConnection();
-
-    return () => {
-      isCancelled = true;
-
-      connection.off(
-        "MessageCreated",
-        handleMessageCreated
-      );
-
-      connection.off(
-        "MessageUpdated",
-        handleMessageUpdated
-      );
-
-      connection.off(
-        "MessageDeleted",
-        handleMessageDeleted
-      );
-
-      if (
-        connectionRef.current ===
-        connection
-      ) {
-        connectionRef.current = null;
-      }
-
+    if (
+      connection.state ===
+      HubConnectionState.Connected
+    ) {
       void connection
-        .stop()
-        .catch(() => undefined);
-    };
-  }, [
-    params.channelId,
-    accessToken,
-  ]);
+        .invoke(
+          "LeaveChannel",
+          channelId
+        )
+        .catch(leaveError => {
+          console.error(
+            "Channel could not be left:",
+            leaveError
+          );
+        });
+    }
+
+    /*
+     * Qlobal bağlantı olduğu üçün
+     * connection.stop() çağırılmır.
+     */
+  };
+}, [
+  params.channelId,
+  accessToken,
+  connection,
+  chatHubStatus,
+]);
 
   const handleSendMessage = async (
     event: FormEvent<HTMLFormElement>

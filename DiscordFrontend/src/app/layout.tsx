@@ -3,6 +3,7 @@ import { Open_Sans } from "next/font/google";
 
 import CommonLayout from "@/components/layout/common-layout";
 import CurrentUserLoader from "@/components/current-user-loader";
+import { ChatHubProvider } from "@/components/chat/chat-hub-provider";
 import { VoiceProvider } from "@/components/voice/voice-provider";
 import VoiceControlsPanel from "@/components/voice/voice-controls-panel";
 
@@ -22,15 +23,17 @@ export default function RootLayout({
 }: React.PropsWithChildren) {
   return (
     <html lang="en">
-      <body className={mainFont.className + " dark"}>
+      <body className={`${mainFont.className} dark`}>
         <VoiceProvider>
-          <CurrentUserLoader />
+          <ChatHubProvider>
+            <CurrentUserLoader />
 
-          <CommonLayout />
+            <CommonLayout />
 
-          <VoiceControlsPanel />
+            <VoiceControlsPanel />
 
-          {children}
+            {children}
+          </ChatHubProvider>
         </VoiceProvider>
       </body>
     </html>
