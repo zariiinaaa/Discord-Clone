@@ -138,10 +138,12 @@ public class MessageService : IMessageService
     }
 
 
-    public async Task<MessageResponseDto>CreateConversationMessageAsync(int conversationId,int userId,CreateMessageRequestDto request,
+    public async Task<MessageResponseDto>CreateConversationMessageAsync(int conversationId, int userId,
+        CreateMessageRequestDto request,
         CancellationToken cancellationToken = default)
     {
-        var validationResult = await _createMessageValidator
+        var validationResult =
+            await _createMessageValidator
                 .ValidateAsync(
                     request,
                     cancellationToken);
@@ -152,7 +154,8 @@ public class MessageService : IMessageService
                 validationResult.Errors);
         }
 
-        var conversation = await _conversationAccessService
+        var conversation =
+            await _conversationAccessService
                 .GetAccessibleConversationAsync(
                     conversationId,
                     userId,
@@ -161,11 +164,17 @@ public class MessageService : IMessageService
         if (request.ReplyToMessageId.HasValue)
         {
             var replyMessageExists =
-                await _dbContext.Messages.AnyAsync(
-                    message =>message.Id ==request.ReplyToMessageId.Value &&
-                        message.ConversationId ==
-                            conversationId,
-                    cancellationToken);
+                await _dbContext.Messages
+                    .AnyAsync(
+                        message =>
+                            message.Id ==
+                                request
+                                    .ReplyToMessageId
+                                    .Value &&
+
+                            message.ConversationId ==
+                                conversationId,
+                        cancellationToken);
 
             if (!replyMessageExists)
             {
@@ -177,39 +186,66 @@ public class MessageService : IMessageService
         await using var transaction =await _dbContext.Database.BeginTransactionAsync(
                     cancellationToken);
 
-        if (conversation.Type ==
-            ConversationType.Direct)
+        if (
+            conversation.Type ==ConversationType.Direct
+        )
         {
             await PrepareDirectMessageRequestAsync(
                 conversation,
                 userId,
                 cancellationToken);
+
+            
+            var conversationMembers = await _dbContext
+                    .ConversationMembers
+                    .Where(member =>
+                        member.ConversationId ==
+                            conversationId)
+                    .ToListAsync(
+                        cancellationToken);
+
+            foreach (
+                var conversationMember
+                in conversationMembers)
+            {
+                conversationMember
+                    .IsVisibleInList = true;
+            }
         }
 
         var message = new Message
         {
-            Content = request.Content.Trim(),
+            Content =
+                request.Content.Trim(),
 
-            
             ChannelId = null,
 
-            ConversationId = conversationId,
+            ConversationId =
+                conversationId,
+
             AuthorId = userId,
+
             ReplyToMessageId =
                 request.ReplyToMessageId,
+
             IsPinned = false
         };
 
-        _dbContext.Messages.Add(message);
+        _dbContext.Messages.Add(
+            message);
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        await _dbContext.SaveChangesAsync(
+            cancellationToken);
 
-        await transaction.CommitAsync( cancellationToken);
+        await transaction.CommitAsync(
+            cancellationToken);
 
-        message.Author =await _dbContext.Users
+        message.Author =
+            await _dbContext.Users
                 .AsNoTracking()
                 .FirstAsync(
-                    user => user.Id == userId,
+                    user =>
+                        user.Id == userId,
                     cancellationToken);
 
         return message.ToResponseDto();

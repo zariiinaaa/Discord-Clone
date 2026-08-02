@@ -28,10 +28,11 @@ namespace Discord.Core.Interfaces
         Task<FriendResponseDto> AcceptRequestAsync( int userId,int requestId,
             CancellationToken cancellationToken = default);
 
-        Task RejectRequestAsync(int userId, int requestId,
+        Task<int> RejectRequestAsync(int userId,int requestId,
             CancellationToken cancellationToken = default);
 
-        Task CancelRequestAsync( int userId,int requestId,
+
+        Task<int> CancelRequestAsync(int userId,int requestId,
             CancellationToken cancellationToken = default);
 
         Task RemoveFriendAsync(int userId,int friendUserId,

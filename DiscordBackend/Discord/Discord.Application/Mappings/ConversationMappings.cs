@@ -5,7 +5,8 @@ namespace Discord.Application.Mappings;
 
 public static class ConversationMappings
 {
-    public static ConversationResponseDto ToResponseDto(this Conversation conversation)
+    public static ConversationResponseDto
+        ToResponseDto(this Conversation conversation,int unreadCount = 0)
     {
         return new ConversationResponseDto
         {
@@ -14,20 +15,22 @@ public static class ConversationMappings
             Name = conversation.Name,
             IconUrl = conversation.IconUrl,
             OwnerId = conversation.OwnerId,
+            UnreadCount = unreadCount,
             CreatedAt = conversation.CreatedAt,
 
-            Members = conversation.Members.OrderBy(member =>
-                    member.User.DisplayName).Select(member =>
+            Members = conversation.Members
+                .OrderBy(member =>
+                    member.User.DisplayName)
+                .Select(member =>
                     new ConversationMemberResponseDto
                     {
                         UserId = member.UserId,
                         Username =member.User.Username,
-                        DisplayName =member.User.DisplayName,
+                        DisplayName = member.User.DisplayName,
                         AvatarUrl = member.User.AvatarUrl,
                         Status =member.User.Status,
-                        IsMuted = member.IsMuted
-                    })
-                .ToArray()
+                        IsMuted =member.IsMuted
+                    }).ToArray()
         };
     }
 }

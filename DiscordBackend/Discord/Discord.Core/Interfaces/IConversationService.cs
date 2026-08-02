@@ -28,4 +28,8 @@ public interface IConversationService
         CancellationToken cancellationToken = default);
 
     Task LeaveGroupConversationAsync(int conversationId, int userId,CancellationToken cancellationToken = default);
+
+    Task MarkAsReadAsync( int conversationId, int userId,CancellationToken cancellationToken = default);
+
+    Task UpdateMuteStatusAsync(int conversationId,int userId,UpdateConversationMuteRequestDto request,CancellationToken cancellationToken = default);
 }

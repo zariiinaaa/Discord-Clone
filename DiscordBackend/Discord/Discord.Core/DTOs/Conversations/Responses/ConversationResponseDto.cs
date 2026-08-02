@@ -16,4 +16,5 @@ public class ConversationResponseDto
     public IReadOnlyCollection<ConversationMemberResponseDto> Members{ get; set; }=
         Array.Empty<ConversationMemberResponseDto>();
     public DateTime CreatedAt { get; set; }
+    public int UnreadCount { get; set; }
 }

@@ -35,35 +35,102 @@ public class ConversationService : IConversationService
         _updateGroupConversationValidator =updateGroupConversationValidator;
     }
 
-    public async Task<IReadOnlyCollection<ConversationResponseDto>>GetMyConversationsAsync(int userId,CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyCollection<ConversationResponseDto>>GetMyConversationsAsync(int userId,
+        CancellationToken cancellationToken =default)
     {
-        var conversations =await _dbContext.Conversations
-            .AsNoTracking()
-            .Include(conversation =>
-                conversation.Members)
-            .ThenInclude(member =>
-                member.User)
-            .Where(conversation =>
-                conversation.Members.Any(member =>
-                    member.UserId == userId) &&
+        var conversations = await _dbContext.Conversations .AsNoTracking().Include(conversation =>
+                    conversation.Members)
+                .ThenInclude(member =>
+                    member.User)
+                .Where(conversation =>
+                    conversation.Members.Any(
+                        member =>
+                            member.UserId ==
+                                userId &&
 
-                !_dbContext.DirectMessageRequests.Any(
-                    messageRequest =>
-                        messageRequest.ConversationId ==
-                            conversation.Id &&
+                            member
+                                .IsVisibleInList) &&
 
-                        messageRequest.RecipientId ==
+                    !_dbContext
+                        .DirectMessageRequests
+                        .Any(messageRequest =>
+                            messageRequest.ConversationId ==conversation.Id &&
+
+                            messageRequest.RecipientId ==
                             userId &&
 
-                        messageRequest.Status !=
-                            MessageRequestStatus.Accepted))
-            .OrderByDescending(conversation =>
-                conversation.CreatedAt)
-            .ToListAsync(cancellationToken);
+                            messageRequest.Status !=
+                            MessageRequestStatus
+                                .Accepted))
+                .OrderByDescending(conversation =>
+                    conversation.UpdatedAt)
+                .ThenByDescending(conversation =>
+                    conversation.CreatedAt)
+                .ToListAsync(
+                    cancellationToken);
+
+        var unreadCounts =
+            await (
+                from message in
+                    _dbContext.Messages
+                        .AsNoTracking()
+
+                join membership in
+                    _dbContext.ConversationMembers
+                        .AsNoTracking()
+
+                on message.ConversationId
+                    equals
+                    (int?)membership
+                        .ConversationId
+
+                where
+                    membership.UserId ==
+                        userId &&
+
+                    membership
+                        .IsVisibleInList &&
+
+                    message.AuthorId !=
+                        userId &&
+
+                    (
+                        membership
+                            .LastReadMessageId ==
+                        null ||
+
+                        message.Id >
+                        membership
+                            .LastReadMessageId
+                            .Value
+                    )
+
+                group message by
+                    membership.ConversationId
+                into messageGroup
+
+                select new
+                {
+                    ConversationId =
+                        messageGroup.Key,
+
+                    Count =
+                        messageGroup.Count()
+                }
+            )
+            .ToDictionaryAsync(
+                item =>
+                    item.ConversationId,
+                item =>
+                    item.Count,
+                cancellationToken);
 
         return conversations
             .Select(conversation =>
-                conversation.ToResponseDto())
+                conversation.ToResponseDto(
+                    unreadCounts
+                        .GetValueOrDefault(
+                            conversation.Id)))
             .ToArray();
     }
 
@@ -94,11 +161,11 @@ public class ConversationService : IConversationService
         return conversation.ToResponseDto();
     }
 
-    public async Task<ConversationResponseDto>CreateDirectConversationAsync(int userId,
-            CreateDirectConversationRequestDto request,
-            CancellationToken cancellationToken = default)
+    public async Task<ConversationResponseDto> CreateDirectConversationAsync(int userId,
+        CreateDirectConversationRequestDto request,CancellationToken cancellationToken = default)
     {
-        var validationResult =await _directConversationValidator
+        var validationResult =
+            await _directConversationValidator
                 .ValidateAsync(
                     request,
                     cancellationToken);
@@ -117,12 +184,14 @@ public class ConversationService : IConversationService
                 "Özünüzlə şəxsi söhbət yarada bilməzsiniz.");
         }
 
-        var users = await _dbContext.Users
-            .Where(user =>user.Id == userId ||
-                user.Id == otherUserId)
-            .ToDictionaryAsync(
-                user => user.Id,
-                cancellationToken);
+        var users =
+            await _dbContext.Users
+                .Where(user =>
+                    user.Id == userId ||
+                    user.Id == otherUserId)
+                .ToDictionaryAsync(
+                    user => user.Id,
+                    cancellationToken);
 
         if (!users.ContainsKey(otherUserId))
         {
@@ -136,55 +205,75 @@ public class ConversationService : IConversationService
                 "Cari istifadəçi tapılmadı.");
         }
 
-        var isBlocked =await _dbContext.UserBlocks.AnyAsync(
-                userBlock =>(userBlock.BlockerId == userId &&
-                     userBlock.BlockedUserId ==otherUserId) ||
-                    (userBlock.BlockerId ==otherUserId &&
-                     userBlock.BlockedUserId == userId),cancellationToken);
+        var isBlocked =
+            await _dbContext.UserBlocks
+                .AnyAsync(
+                    userBlock =>
+                        (
+                            userBlock.BlockerId ==
+                                userId &&
+                            userBlock.BlockedUserId ==
+                                otherUserId
+                        ) ||
+                        (
+                            userBlock.BlockerId ==
+                                otherUserId &&
+                            userBlock.BlockedUserId ==
+                                userId
+                        ),
+                    cancellationToken);
 
         if (isBlocked)
         {
-            throw new ForbiddenException("Bloklanmış istifadəçi ilə şəxsi söhbət yaratmaq mümkün deyil.");
+            throw new ForbiddenException(
+                "Bloklanmış istifadəçi ilə şəxsi söhbət yaratmaq mümkün deyil.");
         }
 
-        var areFriends = await _dbContext.Friendships
-     .AsNoTracking()
-     .AnyAsync(
-         friendship =>
-             (friendship.UserId == userId &&
-              friendship.FriendId == request.OtherUserId) ||
-             (friendship.UserId == request.OtherUserId &&
-              friendship.FriendId == userId),
-         cancellationToken);
+        var areFriends =await _dbContext.Friendships
+                .AsNoTracking()
+                .AnyAsync(
+                    friendship =>
+                        (
+                            friendship.UserId ==userId &&
+                            friendship.FriendId ==otherUserId
+                        ) ||
+                        (
+                            friendship.UserId ==otherUserId &&
+                            friendship.FriendId == userId
+                        ),
+                    cancellationToken);
 
         if (!areFriends)
         {
-            await EnsureCanMessageThroughSharedServerAsync(
-                userId,
-                request.OtherUserId,
-                cancellationToken);
+            await EnsureCanMessageThroughSharedServerAsync( userId,otherUserId,cancellationToken);
         }
 
+      
         var existingConversation =await _dbContext.Conversations
-                .AsNoTracking()
                 .Include(conversation =>
                     conversation.Members)
                 .ThenInclude(member =>
                     member.User)
                 .FirstOrDefaultAsync(
                     conversation =>
-                        conversation.Type ==
-                            ConversationType.Direct &&
-                        conversation.Members.Count == 2 &&
-                        conversation.Members.Any(member =>
-                            member.UserId == userId) &&
-                        conversation.Members.Any(member =>
-                            member.UserId ==
-                                otherUserId),
-                    cancellationToken);
+                        conversation.Type == ConversationType.Direct && conversation.Members.Count == 2 && conversation.Members.Any(
+                            member =>member.UserId == userId) &&
+                        conversation.Members.Any( member => member.UserId ==otherUserId),cancellationToken);
 
         if (existingConversation is not null)
         {
+            var currentMember =existingConversation.Members.First(member =>
+                        member.UserId == userId);
+
+            if (!currentMember.IsVisibleInList)
+            {
+                currentMember.IsVisibleInList =
+                    true;
+
+                await _dbContext.SaveChangesAsync(
+                    cancellationToken);
+            }
+
             return existingConversation
                 .ToResponseDto();
         }
@@ -197,18 +286,22 @@ public class ConversationService : IConversationService
             OwnerId = null
         };
 
+     
         conversation.Members.Add(
             new ConversationMember
             {
                 UserId = userId,
-                User = users[userId]
+                User = users[userId],
+                IsVisibleInList = true
             });
 
+        
         conversation.Members.Add(
             new ConversationMember
             {
                 UserId = otherUserId,
-                User = users[otherUserId]
+                User = users[otherUserId],
+                IsVisibleInList = false
             });
 
         _dbContext.Conversations.Add(
@@ -606,36 +699,84 @@ public class ConversationService : IConversationService
             return;
         }
 
-        _dbContext.ConversationMembers.Remove(
-            currentMember);
-
-        conversation.Members.Remove(
-            currentMember);
+        _dbContext.ConversationMembers.Remove(currentMember);
+        conversation.Members.Remove(currentMember);
 
         if (conversation.OwnerId == userId)
         {
-            var newOwner =
-                conversation.Members
+            var newOwner =conversation.Members
                     .OrderBy(member =>
                         member.CreatedAt)
                     .ThenBy(member =>
                         member.Id)
                     .First();
 
-            conversation.OwnerId =
-                newOwner.UserId;
+            conversation.OwnerId = newOwner.UserId;
+            conversation.Owner = newOwner.User;
+        }
+        conversation.UpdatedAt = DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+    }
 
-            conversation.Owner =
-                newOwner.User;
+    public async Task MarkAsReadAsync(int conversationId,int userId,CancellationToken cancellationToken =default)
+    {
+        if (conversationId <= 0)
+        {
+            throw new BadRequestException("Söhbət ID-si düzgün deyil.");
         }
 
-        conversation.UpdatedAt = DateTime.UtcNow;
+        var membership =await _dbContext.ConversationMembers
+                .FirstOrDefaultAsync(
+                    member => member.ConversationId ==conversationId &&
 
-        await _dbContext.SaveChangesAsync(
-            cancellationToken);
+                        member.UserId == userId,
+                    cancellationToken)
+            ?? throw new KeyNotFoundException("Söhbət tapılmadı və ya bu söhbətin üzvü deyilsiniz.");
+
+        var latestMessageId =await _dbContext.Messages
+                .AsNoTracking()
+                .Where(message =>
+                    message.ConversationId ==
+                        conversationId)
+                .MaxAsync(message => (int?)message.Id,cancellationToken);
+
+        if (
+            membership.LastReadMessageId ==latestMessageId
+        )
+        {
+            return;}
+
+        membership.LastReadMessageId =latestMessageId;
+        membership.LastReadAt =DateTime.UtcNow;
+        membership.UpdatedAt = DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
 
+    public async Task UpdateMuteStatusAsync(int conversationId, int userId,UpdateConversationMuteRequestDto request,
+    CancellationToken cancellationToken = default)
+    {
+        if (conversationId <= 0)
+        {
+            throw new BadRequestException("Söhbət ID-si düzgün deyil.");
+        }
+
+        var conversationMember = await _dbContext.ConversationMembers
+                .FirstOrDefaultAsync(
+                    member =>member.ConversationId == conversationId &&member.UserId == userId,
+                    cancellationToken)?? throw new KeyNotFoundException(
+                "Söhbət tapılmadı və ya bu söhbətin üzvü deyilsiniz.");
+
+        if (
+            conversationMember.IsMuted ==request.IsMuted
+        )
+        {
+            return;}
+
+        conversationMember.IsMuted = request.IsMuted;
+        conversationMember.UpdatedAt =  DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+    }
     private async Task EnsureCanMessageThroughSharedServerAsync(int senderId,int recipientId,
         CancellationToken cancellationToken)
     {

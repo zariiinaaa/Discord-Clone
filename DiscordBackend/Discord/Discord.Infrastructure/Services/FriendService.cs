@@ -15,13 +15,9 @@ namespace Discord.Infrastructure.Services
     {
         private readonly AppDbContext _dbContext;
 
-        private readonly IValidator<SendFriendRequestDto>
-            _sendRequestValidator;
+        private readonly IValidator<SendFriendRequestDto> _sendRequestValidator;
 
-        public FriendService(
-            AppDbContext dbContext,
-            IValidator<SendFriendRequestDto>
-                sendRequestValidator)
+        public FriendService(AppDbContext dbContext, IValidator<SendFriendRequestDto>sendRequestValidator)
         {
             _dbContext = dbContext;
             _sendRequestValidator = sendRequestValidator;
@@ -316,7 +312,7 @@ namespace Discord.Infrastructure.Services
                     friendship.CreatedAt);
         }
 
-        public async Task RejectRequestAsync(
+        public async Task<int> RejectRequestAsync(
             int userId,
             int requestId,
             CancellationToken cancellationToken = default)
@@ -344,9 +340,10 @@ namespace Discord.Infrastructure.Services
 
             await _dbContext.SaveChangesAsync(
                 cancellationToken);
+            return friendRequest.SenderId;
         }
 
-        public async Task CancelRequestAsync(
+        public async Task<int> CancelRequestAsync(
             int userId,
             int requestId,
             CancellationToken cancellationToken = default)
@@ -374,6 +371,7 @@ namespace Discord.Infrastructure.Services
 
             await _dbContext.SaveChangesAsync(
                 cancellationToken);
+            return friendRequest.ReceiverId;
         }
 
         public async Task RemoveFriendAsync(
