@@ -2,8 +2,19 @@ import { API_URL, apiRequest } from "@/lib/api";
 import type { AuthenticatedUser } from "@/lib/authApi";
 import {
   StaticUserStatuses,
-  type User
+  type User,
+  type UserStatuses
 } from "@/lib/entities/user";
+
+export interface UpdateProfileRequest {
+  displayName: string;
+  bio: string | null;
+}
+
+export interface ChangeStatusResponse {
+  preferredStatus: string;
+  visibleStatus: string;
+}
 
 export function getCurrentUser(
   accessToken: string
@@ -15,6 +26,81 @@ export function getCurrentUser(
     },
     accessToken
   );
+}
+
+export function updateCurrentUserProfile(
+  request: UpdateProfileRequest,
+  accessToken: string
+): Promise<AuthenticatedUser> {
+  return apiRequest<AuthenticatedUser>(
+    "/api/v1/users/me",
+    {
+      method: "PATCH",
+      body: JSON.stringify(request)
+    },
+    accessToken
+  );
+}
+
+export function changeCurrentUserStatus(
+  status: UserStatuses
+): Promise<ChangeStatusResponse> {
+  return apiRequest<ChangeStatusResponse>(
+    "/api/v1/users/me/status",
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: mapUserStatusToApiValue(status)
+      })
+    }
+  );
+}
+
+export function uploadCurrentUserAvatar(
+  file: File,
+  accessToken: string
+): Promise<AuthenticatedUser> {
+  const formData = new FormData();
+
+  formData.append("file", file);
+
+  return apiRequest<AuthenticatedUser>(
+    "/api/v1/users/me/avatar",
+    {
+      method: "POST",
+      body: formData
+    },
+    accessToken
+  );
+}
+
+export function deleteCurrentUserAvatar(
+  accessToken: string
+): Promise<void> {
+  return apiRequest<void>(
+    "/api/v1/users/me/avatar",
+    {
+      method: "DELETE"
+    },
+    accessToken
+  );
+}
+function mapUserStatusToApiValue(
+  status: UserStatuses
+): number {
+  switch (status) {
+    case StaticUserStatuses.Online:
+      return 1;
+
+    case StaticUserStatuses.Idle:
+      return 2;
+
+    case StaticUserStatuses.DND:
+      return 3;
+
+    default:
+      return 4;
+  }
 }
 
 function mapUserStatus(

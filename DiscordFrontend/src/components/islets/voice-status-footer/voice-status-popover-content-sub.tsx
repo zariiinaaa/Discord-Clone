@@ -6,6 +6,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTrigger,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import Divider from "@/components/ui/divider";
 import { ListItem } from "@/components/ui/list";
@@ -70,50 +71,57 @@ function PopoverContentSub({
           </ListItem>
           <Divider className="my-2 h-[1px] w-full" />
           <Dialog>
-            <DialogTrigger className="w-full">
+          <DialogTrigger asChild className="w-full">
               <ListItem className=" items-center justify-between  !rounded py-3 text-[12px] leading-[16px] text-white hover:!bg-primary">
                 account management
               </ListItem>
             </DialogTrigger>
-            <DialogContent className="!gap-1">
-              <DialogHeader className="w-full text-xl font-bold sm:!text-center">
-                Account management
-              </DialogHeader>
+           <DialogContent className="!gap-1">
+  <DialogHeader className="w-full">
+    <DialogTitle className="text-xl font-bold sm:!text-center">
+      Account management
+    </DialogTitle>
 
-              <DialogDescription>
-                <p className="text-base text-gray-300">
-                  Switch accounts, log in, log out, go all in.
-                </p>
-                <div className=" mt-4 flex items-center justify-between rounded bg-foreground py-2 pl-3 pr-2">
-                  <div className="flex items-center">
-                    <Avatar
-                      size="md"
-                      src={currentUser.avatar}
-                      alt={currentUser.name}
-                    />
-                    <div className="ml-2 flex flex-col text-[14px] font-semibold">
-                      <p>{currentUser.username}</p>
-                      <p className=" text-green-500">Active account</p>
-                    </div>
-                  </div>
-                  <Popover>
-                    <PopoverTrigger>
-                      <BsThreeDots className=" text-xl hover:text-gray-200" />
-                    </PopoverTrigger>
-                    <PopoverContent className="!w-24 border-none bg-background !p-1.5">
-                      <ListItem className=" !rounded font-medium leading-[18px] text-red-500 hover:bg-red-500 hover:text-white">
-                        Logout
-                      </ListItem>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                <div className="w-full text-center">
-                  <Button bg={false} className="mx-auto ">
-                    Add Account
-                  </Button>
-                </div>
-              </DialogDescription>
-            </DialogContent>
+    <DialogDescription className="text-base text-gray-300">
+      Switch accounts, log in, log out, go all in.
+    </DialogDescription>
+  </DialogHeader>
+
+  <div className="mt-4 flex items-center justify-between rounded bg-foreground py-2 pl-3 pr-2">
+    <div className="flex items-center">
+      <Avatar
+        size="md"
+        src={currentUser.avatar}
+        alt={currentUser.name}
+      />
+
+      <div className="ml-2 flex flex-col text-[14px] font-semibold">
+        <p>{currentUser.username}</p>
+        <p className="text-green-500">
+          Active account
+        </p>
+      </div>
+    </div>
+
+    <Popover>
+      <PopoverTrigger>
+        <BsThreeDots className="text-xl hover:text-gray-200" />
+      </PopoverTrigger>
+
+      <PopoverContent className="!w-24 border-none bg-background !p-1.5">
+        <ListItem className="!rounded font-medium leading-[18px] text-red-500 hover:bg-red-500 hover:text-white">
+          Logout
+        </ListItem>
+      </PopoverContent>
+    </Popover>
+  </div>
+
+  <div className="w-full text-center">
+    <Button bg={false} className="mx-auto">
+      Add Account
+    </Button>
+  </div>
+</DialogContent>
           </Dialog>
         </PopoverContent>
       </Popover>

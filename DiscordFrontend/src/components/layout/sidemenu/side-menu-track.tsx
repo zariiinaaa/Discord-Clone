@@ -3,12 +3,16 @@ import React, { useState } from "react";
 import { ListedServer } from "@/lib/entities/server";
 import SideMenuItem from "./side-menu-item";
 import { clsx } from "@/lib/utils";
-import { BsDiscord } from "react-icons/bs";
+import {
+  BsDiscord,
+  BsPlus,
+} from "react-icons/bs";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
 import Divider from "@/components/ui/divider";
 
 type SideMenuTrackProps = {
   servers: ListedServer[];
+  onOpenServerModal: () => void;
 };
 
 type ServerMenuItemProps = {
@@ -36,7 +40,10 @@ const ServerMenuItem = ({
   );
 };
 
-export default function SideMenuTrack({ servers }: SideMenuTrackProps) {
+export default function SideMenuTrack({
+  servers,
+  onOpenServerModal,
+}: SideMenuTrackProps) {
   const [active, setActive] = useState<string>("default");
 
   return (
@@ -75,6 +82,19 @@ export default function SideMenuTrack({ servers }: SideMenuTrackProps) {
             }}
           />
         ))}
+        <button
+  type="button"
+  title="Add a Server"
+  aria-label="Add a Server"
+  onClick={onOpenServerModal}
+  className={clsx(
+    "mx-auto my-2 flex h-12 w-12 items-center justify-center",
+    "rounded-full bg-foreground text-green-500 transition-all",
+    "hover:rounded-[15px] hover:bg-green-600 hover:text-white"
+  )}
+>
+  <BsPlus fontSize={30} />
+</button>
       </TooltipProvider>
     </>
   );

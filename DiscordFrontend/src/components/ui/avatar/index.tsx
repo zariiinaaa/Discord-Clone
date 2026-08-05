@@ -32,14 +32,20 @@ export default function Avatar({
     >
       {src ? (
         <Image
-          className={"rounded-full"}
-          unoptimized
-          priority
-          src={src}
-          width={32}
-          height={32}
-          alt={alt}
-        />
+  className="rounded-full object-cover"
+  unoptimized
+  priority
+  src={src}
+  alt={alt}
+  fill
+  sizes={
+    size === "sm"
+      ? "24px"
+      : size === "lg"
+        ? "48px"
+        : "32px"
+  }
+/>
       ) : (
         <BsDiscord fontSize={18} />
       )}

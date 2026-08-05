@@ -1,5 +1,13 @@
 import { apiRequest } from "@/lib/api";
 
+export interface MessageAttachmentResponse {
+  id: number;
+  fileName: string;
+  fileUrl: string;
+  contentType: string;
+  fileSize: number;
+}
+
 export interface MessageResponse {
   id: number;
   content: string;
@@ -12,11 +20,14 @@ export interface MessageResponse {
   isPinned: boolean;
   editedAt: string | null;
   createdAt: string;
+  conversationId: number | null;
+  attachments: MessageAttachmentResponse[];
 }
 
 export interface CreateMessageRequest {
   content: string;
   replyToMessageId: number | null;
+  attachments: File[];
 }
 
 export interface UpdateMessageRequest {
@@ -29,10 +40,9 @@ export function getChannelMessages(
   beforeMessageId?: number,
   limit = 50
 ): Promise<MessageResponse[]> {
-  const searchParams =
-    new URLSearchParams({
-      limit: limit.toString(),
-    });
+  const searchParams = new URLSearchParams({
+    limit: limit.toString(),
+  });
 
   if (beforeMessageId) {
     searchParams.set(
@@ -55,11 +65,34 @@ export function createMessage(
   request: CreateMessageRequest,
   accessToken: string
 ): Promise<MessageResponse> {
+  const formData = new FormData();
+
+  formData.append(
+    "Content",
+    request.content
+  );
+
+  if (request.replyToMessageId !== null) {
+    formData.append(
+      "ReplyToMessageId",
+      request.replyToMessageId.toString()
+    );
+  }
+
+  request.attachments.forEach(
+    attachment => {
+      formData.append(
+        "attachments",
+        attachment
+      );
+    }
+  );
+
   return apiRequest<MessageResponse>(
     `/api/v1/channels/${channelId}/messages`,
     {
       method: "POST",
-      body: JSON.stringify(request),
+      body: formData,
     },
     accessToken
   );

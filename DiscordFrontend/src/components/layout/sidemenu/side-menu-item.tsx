@@ -62,17 +62,24 @@ export default function SideMenuItem({
             count={notificationCount}
           />
           {image && (
-            <Image
-              src={image.url}
-              alt={image.alt}
-              width={48}
-              height={48}
-              unoptimized
-              priority
-              loader={({ src }) => `${src}`}
-              className={clsx("absolute inset-0 transition-all", roundClasses)}
-            />
-          )}
+  <span
+    className={clsx(
+      "absolute inset-0 overflow-hidden transition-all",
+      roundClasses
+    )}
+  >
+    <Image
+      src={image.url}
+      alt={image.alt}
+      width={48}
+      height={48}
+      unoptimized
+      priority
+      loader={({ src }) => `${src}`}
+      className="h-full w-full object-cover"
+    />
+  </span>
+)}
           {children}
         </Link>
       </TooltipTrigger>

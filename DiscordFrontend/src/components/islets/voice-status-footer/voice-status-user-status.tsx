@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import StatusBadge from "@/components/ui/badge/status-badge";
 import Divider from "@/components/ui/divider";
 import { ListItem } from "@/components/ui/list";
@@ -11,14 +12,14 @@ interface UserStatusProps {
 function UserStatus({ statuses, handleSubmit, setOpen }: UserStatusProps) {
   return (
     <div className="leading-[16px]">
-      {statuses.map((status, index) => (
-        <>
+{statuses.map(status => (
+  <Fragment key={status.value}>
           <ListItem
             onClick={() => {
               setOpen(false), handleSubmit(status.value);
             }}
             className="group my-1 min-w-[180px] max-w-[380px] flex-col  !items-start !rounded text-gray-300 hover:!bg-primary"
-            key={index}
+            
           >
             <div className="flex items-center">
               <StatusBadge
@@ -26,9 +27,13 @@ function UserStatus({ statuses, handleSubmit, setOpen }: UserStatusProps) {
                 className="relative h-[9px]  w-[9px] !border-none group-hover:!bg-white"
                 status={status.value}
               />
-              <p className="ml-2">
-                {status.value.charAt(0).toUpperCase() + status.value.slice(1)}
-              </p>
+             <p className="ml-2">
+  {status.value === "offline"
+    ? "Invisible"
+    : status.value === "dnd"
+      ? "Do Not Disturb"
+      : status.value.charAt(0).toUpperCase() + status.value.slice(1)}
+</p>
             </div>
             <div className="ml-5 text-[12px]">
               {status.value === "offline" && (
@@ -47,7 +52,7 @@ function UserStatus({ statuses, handleSubmit, setOpen }: UserStatusProps) {
               status.value === "online" ? "block" : "hidden"
             } `}
           />
-        </>
+       </Fragment>
       ))}
     </div>
   );

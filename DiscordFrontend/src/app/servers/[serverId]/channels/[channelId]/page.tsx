@@ -6,7 +6,10 @@ import {
   useRef,
   useState,
 } from "react";
-import type { FormEvent } from "react";
+import type {
+  ChangeEvent,
+  FormEvent,
+} from "react";
 
 import { useParams } from "next/navigation";
 
@@ -80,6 +83,11 @@ export default function ChannelPage() {
 
   const messageInputRef =
     useRef<HTMLInputElement | null>(null);
+    const fileInputRef =
+  useRef<HTMLInputElement | null>(null);
+const messagesContainerRef =
+  useRef<HTMLDivElement | null>(null);
+  
 
   const [server, setServer] =
     useState<ServerDetailsResponse | null>(
@@ -91,6 +99,10 @@ export default function ChannelPage() {
 
   const [messageText, setMessageText] =
     useState("");
+const [unreadMessageCount, setUnreadMessageCount] =
+  useState(0);
+    const [selectedFiles, setSelectedFiles] =
+  useState<File[]>([]);
 
   const [
     replyingToMessage,
@@ -268,33 +280,57 @@ useEffect(() => {
 
   let isCancelled = false;
 
-  const handleMessageCreated = (
-    message: MessageResponse
-  ) => {
-    if (
-      message.channelId !== channelId
-    ) {
+ const handleMessageCreated = (
+  message: MessageResponse
+) => {
+  if (message.channelId !== channelId) {
+    return;
+  }
+
+  const shouldAutoScroll =
+    isNearMessagesBottom();
+
+  let messageWasAdded = false;
+
+  setMessages(currentMessages => {
+    const alreadyExists =
+      currentMessages.some(
+        currentMessage =>
+          currentMessage.id === message.id
+      );
+
+    if (alreadyExists) {
+      return currentMessages;
+    }
+
+    messageWasAdded = true;
+
+    return [
+      ...currentMessages,
+      message,
+    ];
+  });
+
+  window.requestAnimationFrame(() => {
+    if (!messageWasAdded) {
       return;
     }
 
-    setMessages(currentMessages => {
-      const alreadyExists =
-        currentMessages.some(
-          currentMessage =>
-            currentMessage.id ===
-            message.id
-        );
+    if (shouldAutoScroll) {
+      scrollToLatestMessage("smooth");
+      return;
+    }
 
-      if (alreadyExists) {
-        return currentMessages;
-      }
-
-      return [
-        ...currentMessages,
-        message,
-      ];
-    });
-  };
+    if (
+      message.authorId !==
+      Number(currentUser?.id)
+    ) {
+      setUnreadMessageCount(
+        currentCount => currentCount + 1
+      );
+    }
+  });
+};
 
   const handleMessageUpdated = (
   message: MessageResponse
@@ -472,72 +508,145 @@ useEffect(() => {
   chatHubStatus,
 ]);
 
+const isNearMessagesBottom = () => {
+  const container =
+    messagesContainerRef.current;
+
+  if (!container) {
+    return true;
+  }
+
+  const distanceFromBottom =
+    container.scrollHeight -
+    container.scrollTop -
+    container.clientHeight;
+
+  return distanceFromBottom <= 100;
+};
+
+const scrollToLatestMessage = (
+  behavior: ScrollBehavior = "smooth"
+) => {
+  const container =
+    messagesContainerRef.current;
+
+  if (!container) {
+    return;
+  }
+
+  container.scrollTo({
+    top: container.scrollHeight,
+    behavior,
+  });
+
+  setUnreadMessageCount(0);
+};
+
+const handleMessagesScroll = () => {
+  if (isNearMessagesBottom()) {
+    setUnreadMessageCount(0);
+  }
+};
+
+const handleFileChange = (
+  event: ChangeEvent<HTMLInputElement>
+) => {
+  const files = Array.from(
+    event.target.files ?? []
+  );
+
+  if (files.length === 0) {
+    return;
+  }
+
+  setSelectedFiles(currentFiles => [
+    ...currentFiles,
+    ...files,
+  ]);
+
+  event.target.value = "";
+};
+
+const removeSelectedFile = (
+  fileIndex: number
+) => {
+  setSelectedFiles(currentFiles =>
+    currentFiles.filter(
+      (_, index) => index !== fileIndex
+    )
+  );
+};
+
   const handleSendMessage = async (
-    event: FormEvent<HTMLFormElement>
-  ) => {
-    event.preventDefault();
+  event: FormEvent<HTMLFormElement>
+) => {
+  event.preventDefault();
 
-    const content =
-      messageText.trim();
+  const content = messageText.trim();
 
-    const channelId = Number(
-      params.channelId
-    );
+  const channelId = Number(
+    params.channelId
+  );
 
-    if (
-      !content ||
-      !accessToken ||
-      isSending
-    ) {
-      return;
-    }
+  if (
+    (!content && selectedFiles.length === 0) ||
+    !accessToken ||
+    isSending
+  ) {
+    return;
+  }
 
-    try {
-      setIsSending(true);
-      setSendError(null);
+  try {
+    setIsSending(true);
+    setSendError(null);
 
-      const createdMessage =
-        await createMessage(
-          channelId,
-          {
-            content,
-            replyToMessageId:
-              replyingToMessage?.id ??
-              null,
-          },
-          accessToken
+    const createdMessage =
+      await createMessage(
+        channelId,
+        {
+          content,
+          replyToMessageId:
+            replyingToMessage?.id ?? null,
+          attachments: selectedFiles,
+        },
+        accessToken
+      );
+
+    setMessages(currentMessages => {
+      const alreadyExists =
+        currentMessages.some(
+          message =>
+            message.id ===
+            createdMessage.id
         );
 
-      setMessages(currentMessages => {
-        const alreadyExists =
-          currentMessages.some(
-            message =>
-              message.id ===
-              createdMessage.id
-          );
+      if (alreadyExists) {
+        return currentMessages;
+      }
 
-        if (alreadyExists) {
-          return currentMessages;
-        }
+      return [
+        ...currentMessages,
+        createdMessage,
+      ];
+    });
 
-        return [
-          ...currentMessages,
-          createdMessage,
-        ];
-      });
+    setMessageText("");
+    setSelectedFiles([]);
+    setReplyingToMessage(null);
 
-      setMessageText("");
-      setReplyingToMessage(null);
-    } catch (sendMessageError) {
-      setSendError(
-        sendMessageError instanceof Error
-          ? sendMessageError.message
-          : "Mesaj göndərilə bilmədi."
-      );
-    } finally {
-      setIsSending(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
-  };
+  } catch (sendMessageError) {
+    setSendError(
+      sendMessageError instanceof Error
+        ? sendMessageError.message
+        : "Mesaj göndərilə bilmədi."
+    );
+  } finally {
+    setIsSending(false);
+  }
+};
 
   const startReplying = (
     message: MessageResponse
@@ -796,7 +905,11 @@ useEffect(() => {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5">
+      <div
+  ref={messagesContainerRef}
+  onScroll={handleMessagesScroll}
+  className="flex-1 overflow-y-auto px-6 py-5"
+>
           {actionError && (
             <div className="mb-4 rounded-md bg-red-950/40 px-4 py-3 text-sm text-red-300">
               {actionError}
@@ -1010,10 +1123,92 @@ useEffect(() => {
                           </div>
                         </form>
                       ) : (
-                        <p className="mt-1 whitespace-pre-wrap break-words text-gray-100">
-                          {message.content}
-                        </p>
-                      )}
+  <>
+    {message.content && (
+      <p className="mt-1 whitespace-pre-wrap break-words text-gray-100">
+        {message.content}
+      </p>
+    )}
+
+    {message.attachments.length > 0 && (
+     <div
+  className={
+    message.attachments.length === 1
+      ? "mt-2 w-fit max-w-[550px]"
+      : "mt-2 grid w-full max-w-[550px] grid-cols-2 gap-1 overflow-hidden rounded-lg"
+  }
+>
+        {message.attachments.map(
+          (attachment, index) => {
+            const attachmentUrl =
+              attachment.fileUrl.startsWith(
+                "http://"
+              ) ||
+              attachment.fileUrl.startsWith(
+                "https://"
+              )
+                ? attachment.fileUrl
+                : `${API_URL}${
+                    attachment.fileUrl.startsWith(
+                      "/"
+                    )
+                      ? ""
+                      : "/"
+                  }${attachment.fileUrl}`;
+
+            const isImage =
+              attachment.contentType.startsWith(
+                "image/"
+              );
+              const isSingle =
+  message.attachments.length === 1;
+
+const isLastOdd =
+  message.attachments.length > 1 &&
+  message.attachments.length % 2 !== 0 &&
+  index === message.attachments.length - 1;
+
+            return isImage ? (
+            <a
+  key={attachment.id}
+  href={attachmentUrl}
+  target="_blank"
+  rel="noopener noreferrer"
+  className={
+    isSingle
+      ? "block w-fit overflow-hidden rounded-lg"
+      : `block h-[240px] min-w-0 overflow-hidden bg-black/20 ${
+          isLastOdd ? "col-span-2" : ""
+        }`
+  }
+>
+  <img
+    src={attachmentUrl}
+    alt={attachment.fileName}
+    className={
+      isSingle
+        ? "block max-h-[350px] max-w-[550px] rounded-lg object-contain"
+        : "h-full w-full object-cover"
+    }
+  />
+</a>
+            ) : (
+              <a
+                key={attachment.id}
+                href={attachmentUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-md bg-white/10 px-3 py-2 text-sm text-blue-300 hover:underline"
+              >
+                {attachment.fileName}
+              </a>
+            );
+          }
+        )}
+      </div>
+    )}
+  </>
+)}
                     </div>
                   </article>
                 );
@@ -1028,7 +1223,17 @@ useEffect(() => {
               {sendError}
             </p>
           )}
-
+{unreadMessageCount > 0 && (
+  <button
+    type="button"
+    onClick={() =>
+      scrollToLatestMessage("smooth")
+    }
+    className="mx-4 mb-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white shadow-lg hover:brightness-110"
+  >
+    {unreadMessageCount} yeni mesaj ↓
+  </button>
+)}
           {replyingToMessage && (
             <div className="flex items-center justify-between rounded-t-lg border-b border-black/20 bg-white/10 px-4 py-2">
               <div className="min-w-0">
@@ -1056,15 +1261,70 @@ useEffect(() => {
               </button>
             </div>
           )}
+{selectedFiles.length > 0 && (
+  <div className="flex flex-wrap gap-2 border-b border-black/20 bg-white/10 px-4 py-3">
+    {selectedFiles.map((file, index) => (
+      <div
+        key={`${file.name}-${file.lastModified}-${index}`}
+        className="flex max-w-[220px] items-center gap-2 rounded-md bg-background/70 px-3 py-2"
+      >
+        <div className="min-w-0">
+          <p className="truncate text-sm text-gray-200">
+            {file.name}
+          </p>
 
+          <p className="text-xs text-gray-500">
+            {(file.size / 1024).toFixed(1)} KB
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() =>
+            removeSelectedFile(index)
+          }
+          disabled={isSending}
+          className="ml-auto rounded px-1.5 py-1 text-gray-400 hover:bg-white/10 hover:text-white disabled:opacity-50"
+          aria-label={`${file.name} faylını sil`}
+          title="Seçilmiş faylı sil"
+        >
+          ✕
+        </button>
+      </div>
+    ))}
+  </div>
+)}
           <form
             onSubmit={handleSendMessage}
             className={`flex items-center bg-white/10 ${
-              replyingToMessage
+              replyingToMessage ||
+selectedFiles.length > 0
                 ? "rounded-b-lg"
                 : "rounded-lg"
             }`}
           >
+          <input
+  ref={fileInputRef}
+  type="file"
+  multiple
+  accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+  onChange={handleFileChange}
+  disabled={isSending}
+  className="hidden"
+/>
+
+<button
+  type="button"
+  onClick={() =>
+    fileInputRef.current?.click()
+  }
+  disabled={isSending}
+  className="ml-3 flex h-9 w-9 flex-none items-center justify-center rounded-full bg-gray-500 text-xl font-semibold text-background hover:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-50"
+  aria-label="Fayl əlavə et"
+  title="Fayl əlavə et"
+>
+  +
+</button>
             <input
               ref={messageInputRef}
               type="text"
@@ -1083,9 +1343,10 @@ useEffect(() => {
             <button
               type="submit"
               disabled={
-                isSending ||
-                !messageText.trim()
-              }
+  (!messageText.trim() &&
+    selectedFiles.length === 0) ||
+  isSending
+}
               className="mr-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isSending

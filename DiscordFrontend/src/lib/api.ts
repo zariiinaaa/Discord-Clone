@@ -53,7 +53,7 @@ async function refreshAccessToken(): Promise<string> {
   }
 }
 
-function getRefreshedAccessToken(): Promise<string> {
+export function getRefreshedAccessToken(): Promise<string> {
   if (!refreshPromise) {
     refreshPromise = refreshAccessToken()
       .finally(() => {

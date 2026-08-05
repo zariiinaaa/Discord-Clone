@@ -9,10 +9,17 @@ import { t } from "@/lib/i18n";
 import { useCurrentUserStore } from "@/state/user";
 import VoiceControls from "./voice-status-controls";
 import PopoverContentMain from "./voice-status-popover-content-main";
+import UserSettingsModal from "@/components/islets/user-settings-modal";
+
 
 export default function VoiceStatusFooter() {
   const [voiceStatus, setVoiceStatus] =
     useState<VoiceStatus>({ mute: true });
+
+    const [
+  isSettingsOpen,
+  setIsSettingsOpen,
+] = useState(false);
 
   const { currentUser, setCurrentUser } =
     useCurrentUserStore();
@@ -37,18 +44,21 @@ export default function VoiceStatusFooter() {
                     </div>
 
                     <div className="text-[11px] text-gray-300">
-                      {t(
-                        `user.status.${currentUser.status}`
-                      )}
+                      {currentUser.status === "offline"
+  ? "Invisible"
+  : t(`user.status.${currentUser.status}`)}
                     </div>
                   </div>
                 </button>
               </PopoverTrigger>
 
               <VoiceControls
-                voiceStatus={voiceStatus}
-                setVoiceStatus={setVoiceStatus}
-              />
+  voiceStatus={voiceStatus}
+  setVoiceStatus={setVoiceStatus}
+  onOpenSettings={() =>
+    setIsSettingsOpen(true)
+  }
+/>
             </div>
 
             <PopoverContentMain
@@ -58,6 +68,13 @@ export default function VoiceStatusFooter() {
           </Popover>
         </TooltipProvider>
       ) : null}
+
+      <UserSettingsModal
+  open={isSettingsOpen}
+  onClose={() =>
+    setIsSettingsOpen(false)
+  }
+/>
     </>
   );
 }

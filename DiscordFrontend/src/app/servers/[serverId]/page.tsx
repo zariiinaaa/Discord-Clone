@@ -2,12 +2,17 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import {
+  useParams,
+  useRouter,
+} from "next/navigation";
 
 import {
   ChannelResponse,
   getServerById,
+  leaveServer,
   ServerDetailsResponse,
+  ServerResponse,
 } from "@/lib/serverApi";
 
 import { useAuthStore } from "@/state/auth";
@@ -15,6 +20,12 @@ import { useAuthStore } from "@/state/auth";
 import {
   useVoice,
 } from "@/components/voice/voice-provider";
+
+import { BsGearFill } from "react-icons/bs";
+
+import ServerSettingsModal from "@/components/islets/server-settings-modal";
+import ServerMemberList from "@/components/islets/server-member-list";
+import { useCurrentUserStore } from "@/state/user";
 
 const CHANNEL_TYPE = {
   Text: 0,
@@ -42,6 +53,8 @@ function ChannelItem({
 
   const [voiceError, setVoiceError] =
     useState<string | null>(null);
+
+    
 
   const className =
     "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-gray-400 hover:bg-white/5 hover:text-gray-200";
@@ -170,10 +183,14 @@ export default function ServerPage() {
   const params = useParams<{
     serverId: string;
   }>();
-
+const router = useRouter();
   const accessToken = useAuthStore(
     state => state.accessToken
   );
+
+  const currentUser = useCurrentUserStore(
+  state => state.currentUser
+);
 
   const [server, setServer] =
     useState<ServerDetailsResponse | null>(null);
@@ -183,7 +200,13 @@ export default function ServerPage() {
 
   const [error, setError] =
     useState<string | null>(null);
+const [
+  isSettingsOpen,
+  setIsSettingsOpen,
+] = useState(false);
 
+const [isLeaving, setIsLeaving] =
+  useState(false);
   useEffect(() => {
     const serverId = Number(params.serverId);
 
@@ -240,6 +263,79 @@ export default function ServerPage() {
     params.serverId,
     accessToken,
   ]);
+const handleServerUpdated = (
+  updatedServer: ServerResponse
+) => {
+  setServer(currentServer =>
+    currentServer
+      ? {
+          ...currentServer,
+          ...updatedServer,
+        }
+      : currentServer
+  );
+
+  window.dispatchEvent(
+    new Event("servers:refresh")
+  );
+};
+
+useEffect(() => {
+  let isDisposed = false;
+
+  const handleServerMembersChanged =
+    async (event: Event) => {
+      const membersEvent =
+        event as CustomEvent<{
+          serverId: number;
+        }>;
+
+      const currentServerId =
+        Number(params.serverId);
+
+      if (
+        membersEvent.detail.serverId !==
+          currentServerId ||
+        !accessToken
+      ) {
+        return;
+      }
+
+      try {
+        const updatedServer =
+          await getServerById(
+            currentServerId,
+            accessToken
+          );
+
+        if (!isDisposed) {
+          setServer(updatedServer);
+        }
+      } catch (refreshError) {
+        console.error(
+          "Server member count could not be refreshed:",
+          refreshError
+        );
+      }
+    };
+
+  window.addEventListener(
+    "server-members:changed",
+    handleServerMembersChanged
+  );
+
+  return () => {
+    isDisposed = true;
+
+    window.removeEventListener(
+      "server-members:changed",
+      handleServerMembersChanged
+    );
+  };
+}, [
+  params.serverId,
+  accessToken,
+]);
 
   if (isLoading) {
     return (
@@ -258,7 +354,53 @@ export default function ServerPage() {
       </main>
     );
   }
+const isOwner =
+  server.ownerId.toString() ===
+  currentUser?.id;
 
+
+  const handleLeaveServer = async () => {
+  if (
+    !server ||
+    !accessToken ||
+    isOwner ||
+    isLeaving
+  ) {
+    return;
+  }
+
+  const shouldLeave =
+    window.confirm(
+      `Leave ${server.name}?`
+    );
+
+  if (!shouldLeave) {
+    return;
+  }
+
+  try {
+    setIsLeaving(true);
+
+    await leaveServer(
+      server.id,
+      accessToken
+    );
+
+    window.dispatchEvent(
+      new Event("servers:refresh")
+    );
+
+    router.push("/channels/me");
+  } catch (leaveError) {
+    window.alert(
+      leaveError instanceof Error
+        ? leaveError.message
+        : "Server could not be left."
+    );
+  } finally {
+    setIsLeaving(false);
+  }
+};
   const categories =
     server.channels
       .filter(
@@ -290,16 +432,49 @@ export default function ServerPage() {
     <main className="ml-[88px] flex min-h-screen bg-background text-white">
       <aside className="flex w-60 flex-col bg-semibackground">
         <header className="border-b border-black/30 px-4 py-4 shadow">
-          <h1 className="truncate font-semibold">
-            {server.name}
-          </h1>
+  <div className="flex items-start justify-between gap-3">
+    <div className="min-w-0">
+      <h1 className="truncate font-semibold">
+        {server.name}
+      </h1>
 
-          {server.description && (
-            <p className="mt-1 truncate text-xs text-gray-400">
-              {server.description}
-            </p>
-          )}
-        </header>
+      {server.description && (
+        <p className="mt-1 truncate text-xs text-gray-400">
+          {server.description}
+        </p>
+      )}
+    </div>
+
+    {isOwner && (
+      <button
+        type="button"
+        aria-label="Open server settings"
+        title="Server Settings"
+        onClick={() =>
+          setIsSettingsOpen(true)
+        }
+        className="flex h-8 w-8 flex-none items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
+      >
+        <BsGearFill fontSize={16} />
+      </button>
+    )}
+
+    {!isOwner && (
+  <button
+    type="button"
+    disabled={isLeaving}
+    onClick={
+      handleLeaveServer
+    }
+    className="flex-none rounded-md px-2 py-1.5 text-xs font-semibold text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:cursor-wait disabled:opacity-50"
+  >
+    {isLeaving
+      ? "Leaving..."
+      : "Leave Server"}
+  </button>
+)}
+  </div>
+</header>
 
         <div className="flex-1 overflow-y-auto px-2 py-3">
           {uncategorizedChannels.map(
@@ -372,6 +547,39 @@ export default function ServerPage() {
           </p>
         </div>
       </section>
+
+      {accessToken && (
+       <ServerMemberList
+  serverId={server.id}
+  accessToken={accessToken}
+onMemberRemoved={() => {
+  window.dispatchEvent(
+    new CustomEvent(
+      "server-members:changed",
+      {
+        detail: {
+          serverId: server.id,
+        },
+      }
+    )
+  );
+}}
+/>
+      )}
+
+      {isOwner && accessToken && (
+  <ServerSettingsModal
+    open={isSettingsOpen}
+    server={server}
+    accessToken={accessToken}
+    onClose={() =>
+      setIsSettingsOpen(false)
+    }
+    onServerUpdated={
+      handleServerUpdated
+    }
+  />
+)}
     </main>
   );
 }

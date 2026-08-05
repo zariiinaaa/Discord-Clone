@@ -53,7 +53,10 @@ import type {
   FriendUserResponse,
 } from "@/lib/friendApi";
 
-import { apiRequest } from "@/lib/api";
+import {
+  API_URL,
+  apiRequest,
+} from "@/lib/api";
 import { normalizedCompare } from "@/lib/utils/string";
 import clsx from "@/lib/clsx";
 
@@ -110,7 +113,16 @@ function mapUser(
     id: user.id.toString(),
     name: user.displayName,
     username: user.username,
-    avatar: user.avatarUrl,
+   avatar: user.avatarUrl
+  ? user.avatarUrl.startsWith("http://") ||
+    user.avatarUrl.startsWith("https://")
+    ? user.avatarUrl
+    : `${API_URL}${
+        user.avatarUrl.startsWith("/")
+          ? ""
+          : "/"
+      }${user.avatarUrl}`
+  : null,
     status: mapStatus(user.status),
   };
 }
@@ -339,6 +351,59 @@ useEffect(() => {
     );
   };
 }, [loadData]);
+
+useEffect(() => {
+  const handlePresenceChanged = (
+    event: Event
+  ) => {
+    const presenceEvent =
+      event as CustomEvent<{
+        userId: number;
+        status: number;
+      }>;
+
+    const { userId, status } =
+      presenceEvent.detail;
+
+setFriends(currentFriends =>
+  currentFriends.map(friend =>
+    friend.id === userId
+      ? {
+          ...friend,
+          status,
+        }
+      : friend
+  )
+);
+
+const storedFriends =
+  useFriendStore.getState().friends ??
+  [];
+
+setStoredFriends(
+  storedFriends.map(friend =>
+    Number(friend.id) === userId
+      ? {
+          ...friend,
+          status: mapStatus(status),
+        }
+      : friend
+  )
+);
+  };
+
+  window.addEventListener(
+    "user-presence:changed",
+    handlePresenceChanged
+  );
+
+  return () => {
+    window.removeEventListener(
+      "user-presence:changed",
+      handlePresenceChanged
+    );
+  };
+}, [setStoredFriends]);
 
   const executeAction =
     useCallback(

@@ -27,6 +27,12 @@ import {
 
 import { useAuthStore } from "@/state/auth";
 
+import { useCurrentUserStore } from "@/state/user";
+
+import {
+  StaticUserStatuses,
+} from "@/lib/entities/user";
+
 export type ChatHubStatus =
   | "disconnected"
   | "connecting"
@@ -65,6 +71,8 @@ const CHAT_HUB_EVENTS = [
   "DirectMessageRequestCreated",
   "ConversationDataChanged",
   "FriendDataChanged",
+  "UserPresenceChanged",
+  "ServerMembersChanged",
 ] as const;
 
 export function ChatHubProvider({
@@ -73,6 +81,8 @@ export function ChatHubProvider({
   const accessToken = useAuthStore(
     state => state.accessToken
   );
+  const hasAccessToken =
+  Boolean(accessToken);
 
   const [connection, setConnection] =
     useState<HubConnection | null>(null);
@@ -83,7 +93,7 @@ export function ChatHubProvider({
     );
 
   useEffect(() => {
-    if (!accessToken) {
+    if (!hasAccessToken) {
       setConnection(null);
       setStatus("disconnected");
       return;
@@ -92,9 +102,7 @@ export function ChatHubProvider({
     let isDisposed = false;
 
     const newConnection =
-      createChatHubConnection(
-        accessToken
-      );
+  createChatHubConnection();
 
     /*
      * Bu boş handler-lər event warning-lərinin
@@ -140,6 +148,61 @@ export function ChatHubProvider({
         );
       };
 
+  const handleUserPresenceChanged = (
+  userId: number,
+  status: number
+) => {
+  window.dispatchEvent(
+    new CustomEvent(
+      "user-presence:changed",
+      {
+        detail: { userId, status },
+      }
+    )
+  );
+
+  
+
+  const frontendStatus =
+    status === 1
+      ? StaticUserStatuses.Online
+      : status === 2
+        ? StaticUserStatuses.Idle
+        : status === 3
+          ? StaticUserStatuses.DND
+          : StaticUserStatuses.Offline;
+
+  const {
+    currentUser,
+    setCurrentUser,
+  } = useCurrentUserStore.getState();
+
+  if (
+    currentUser &&
+    currentUser.id === userId.toString()
+  ) {
+    setCurrentUser({
+      ...currentUser,
+      status: frontendStatus,
+    });
+  }
+};
+
+const handleServerMembersChanged = (
+  serverId: number
+) => {
+  window.dispatchEvent(
+    new CustomEvent(
+      "server-members:changed",
+      {
+        detail: {
+          serverId,
+        },
+      }
+    )
+  );
+};
+
     CHAT_HUB_EVENTS.forEach(
       eventName => {
         newConnection.on(
@@ -158,6 +221,15 @@ export function ChatHubProvider({
       "ConversationDataChanged",
       handleConversationDataChanged
     );
+    newConnection.on(
+  "UserPresenceChanged",
+  handleUserPresenceChanged
+);
+
+newConnection.on(
+  "ServerMembersChanged",
+  handleServerMembersChanged
+);
 
     newConnection.onreconnecting(() => {
       if (!isDisposed) {
@@ -230,6 +302,16 @@ export function ChatHubProvider({
         handleFriendDataChanged
       );
 
+      newConnection.off(
+  "UserPresenceChanged",
+  handleUserPresenceChanged
+);
+
+newConnection.off(
+  "ServerMembersChanged",
+  handleServerMembersChanged
+);
+
       CHAT_HUB_EVENTS.forEach(
         eventName => {
           newConnection.off(
@@ -243,7 +325,7 @@ export function ChatHubProvider({
         .stop()
         .catch(() => undefined);
     };
-  }, [accessToken]);
+  }, [hasAccessToken]);
 
   const contextValue =
     useMemo<ChatHubContextValue>(

@@ -13,6 +13,7 @@ import React from "react";
 import { AiOutlineRight } from "react-icons/ai";
 import { StaticUserStatuses, User, UserStatuses } from "@/lib/entities/user";
 import UserStatus from "./voice-status-user-status";
+import { changeCurrentUserStatus } from "@/lib/userApi";
 import DialogContentMain from "./voice-status-dialog-content-main";
 import PopoverContentSub from "./voice-status-popover-content-sub";
 interface PopoverContentMainProps {
@@ -32,10 +33,23 @@ function PopoverContentMain({
       value: status,
     }));
 
-  const handleSubmit = (status: UserStatuses) => {
-    const updatedUser = { ...currentUser, status: status };
+const handleSubmit = async (status: UserStatuses) => {
+  try {
+    await changeCurrentUserStatus(status);
+
+    const updatedUser = {
+      ...currentUser,
+      status
+    };
+
     setCurrentUser(updatedUser as User);
-  };
+  } catch (error) {
+    console.error(
+      "Status dəyişdirilə bilmədi:",
+      error
+    );
+  }
+};
   return (
     <PopoverContent
       side="top"
@@ -71,7 +85,14 @@ function PopoverContentMain({
                   customBackgroundColor="!bg-black group-hover:!bg-foreground group-active:!bg-primary"
                   status={currentUser.status}
                 />
-                <p className="ml-2">{currentUser.status}</p>
+              <p className="ml-2">
+  {currentUser.status === "offline"
+    ? "Invisible"
+    : currentUser.status === "dnd"
+      ? "Do Not Disturb"
+      : currentUser.status.charAt(0).toUpperCase() +
+        currentUser.status.slice(1)}
+</p>
               </div>
               <AiOutlineRight size="10" className="justify-self-end" />
             </ListItem>

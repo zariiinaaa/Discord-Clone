@@ -13,8 +13,13 @@ interface VoiceControlsProps {
       deaf?: boolean;
     },
   ) => void;
+  onOpenSettings: () => void;
 }
-function VoiceControls({ voiceStatus, setVoiceStatus }: VoiceControlsProps) {
+function VoiceControls({
+  voiceStatus,
+  setVoiceStatus,
+  onOpenSettings,
+}: VoiceControlsProps) {
   return (
     <div className="flex items-center">
       <VoiceStatusButton
@@ -41,9 +46,10 @@ function VoiceControls({ voiceStatus, setVoiceStatus }: VoiceControlsProps) {
         icon={<BsHeadphones fontSize={20} />}
       />
       <VoiceStatusButton
-        tooltipText="Settings"
-        icon={<BsGearFill fontSize={18} />}
-      />
+  tooltipText="Settings"
+  onClick={onOpenSettings}
+  icon={<BsGearFill fontSize={18} />}
+/>
     </div>
   );
 }
