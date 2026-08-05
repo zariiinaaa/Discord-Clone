@@ -17,14 +17,15 @@ var builder = WebApplication.CreateBuilder(args);
 
 
 builder.Services.AddControllers();
-builder.Services.AddValidatorsFromAssemblyContaining<
-    RegisterRequestDtoValidator>();
+builder.Services.AddValidatorsFromAssemblyContaining<RegisterRequestDtoValidator>();
 
 builder.Services.AddJwtAuthentication(
     builder.Configuration);
 builder.Services.AddSignalR();
 
 builder.Services.AddSingleton<VoiceConnectionTracker>();
+
+builder.Services.AddSingleton<UserConnectionTracker>();
 
 builder.Services.AddCors(options =>
 {
@@ -42,6 +43,7 @@ builder.Services.AddCors(options =>
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IUserPresenceService,UserPresenceService>();
 builder.Services.AddScoped<IFileStorageService,LocalFileStorageService>();
 builder.Services.AddScoped<IServerService, ServerService>();
 builder.Services.AddScoped<IChannelService, ChannelService>();
@@ -68,6 +70,18 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddSwaggerDocumentation();
 
 var app = builder.Build();
+using (var scope =
+       app.Services.CreateScope())
+{
+    var userPresenceService =
+        scope.ServiceProvider
+            .GetRequiredService<
+                IUserPresenceService>();
+
+    await userPresenceService
+        .ResetAllUsersToOfflineAsync();
+}
+
 app.UseMiddleware<ExceptionMiddleware>();
 if (app.Environment.IsDevelopment())
 {

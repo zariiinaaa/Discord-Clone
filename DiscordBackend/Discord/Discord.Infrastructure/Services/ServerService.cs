@@ -206,6 +206,8 @@ public class ServerService : IServerService
         return server.ToResponseDto();
     }
 
+
+
     public async Task DeleteAsync(int serverId,int userId,CancellationToken cancellationToken = default)
     {
         var server = await _dbContext.Servers
@@ -225,5 +227,31 @@ public class ServerService : IServerService
 
         await _dbContext.SaveChangesAsync(
             cancellationToken);
+    }
+
+
+    public async Task<ServerResponseDto> UpdateIconAsync(int serverId,int userId,string iconUrl,
+    CancellationToken cancellationToken = default)
+    {
+        var server = await _dbContext.Servers
+            .FirstOrDefaultAsync(
+                server => server.Id == serverId,
+                cancellationToken)
+            ?? throw new KeyNotFoundException(
+                "Server tapılmadı.");
+
+        if (server.OwnerId != userId)
+        {
+            throw new ForbiddenException(
+                "Yalnız server sahibi server iconunu dəyişə bilər.");
+        }
+
+        server.IconUrl = iconUrl;
+        server.UpdatedAt = DateTime.UtcNow;
+
+        await _dbContext.SaveChangesAsync(
+            cancellationToken);
+
+        return server.ToResponseDto();
     }
 }

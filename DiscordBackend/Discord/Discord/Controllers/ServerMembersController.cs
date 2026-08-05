@@ -1,8 +1,10 @@
 ﻿using Discord.Core.DTOs.ServerMembers.Responses;
 using Discord.Core.Exceptions;
 using Discord.Core.Interfaces;
+using Discord.Hubs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using System.Security.Claims;
 
 namespace Discord.Controllers;
@@ -13,10 +15,14 @@ namespace Discord.Controllers;
 public class ServerMembersController : ControllerBase
 {
     private readonly IServerMemberService _serverMemberService;
+    private readonly IHubContext<ChatHub,IChatClient> _chatHubContext;
 
-    public ServerMembersController(IServerMemberService serverMemberService)
+    public ServerMembersController(IServerMemberService serverMemberService,
+    IHubContext<ChatHub, IChatClient>chatHubContext)
     {
         _serverMemberService = serverMemberService;
+        _chatHubContext = chatHubContext;
+
     }
 
     [HttpGet]
@@ -47,10 +53,12 @@ public class ServerMembersController : ControllerBase
         int serverId,
         CancellationToken cancellationToken)
     {
-        await _serverMemberService.LeaveAsync(
-            serverId,
+        await _serverMemberService.LeaveAsync(serverId,
             GetCurrentUserId(),
             cancellationToken);
+
+        await _chatHubContext.Clients.All
+        .ServerMembersChanged(serverId);
 
         return NoContent();
     }
@@ -68,6 +76,9 @@ public class ServerMembersController : ControllerBase
     {
         await _serverMemberService.KickAsync(serverId, memberUserId,GetCurrentUserId(),
             cancellationToken);
+
+        await _chatHubContext.Clients.All
+            .ServerMembersChanged(serverId);
 
         return NoContent();
     }

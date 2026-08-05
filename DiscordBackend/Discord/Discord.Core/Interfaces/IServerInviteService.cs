@@ -10,4 +10,12 @@ public interface IServerInviteService
         CancellationToken cancellationToken = default);
 
     Task JoinAsync(string code,int userId,CancellationToken cancellationToken = default);
+
+    Task<ServerInviteDetailsResponseDto> GetInviteDetailsAsync(string code, int userId,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyCollection<ServerInviteResponseDto>>GetServerInvitesAsync(int serverId,int userId,
+        CancellationToken cancellationToken = default);
+    Task RevokeAsync(int serverId,int inviteId,int userId,
+        CancellationToken cancellationToken = default);
 }

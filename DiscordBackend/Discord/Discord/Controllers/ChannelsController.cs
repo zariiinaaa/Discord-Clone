@@ -20,6 +20,21 @@ public class ChannelsController : ControllerBase
         _channelService = channelService;
     }
 
+    [HttpGet]
+    [ProducesResponseType(
+    typeof(IReadOnlyList<ChannelResponseDto>),
+    StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetByServer(int serverId,CancellationToken cancellationToken)
+    {
+        var result = await _channelService.GetByServerAsync( serverId, GetCurrentUserId(),
+        cancellationToken);
+
+        return Ok(result);
+    }
+
     [HttpPost]
     [ProducesResponseType(
         typeof(ChannelResponseDto),

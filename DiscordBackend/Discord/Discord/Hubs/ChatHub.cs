@@ -9,14 +9,70 @@ namespace Discord.Hubs;
 public class ChatHub : Hub<IChatClient>
 {
     private readonly IChannelAccessService _channelAccessService;
-
     private readonly IConversationAccessService _conversationAccessService;
+    private readonly IUserPresenceService _userPresenceService;
+    private readonly UserConnectionTracker _userConnectionTracker;
 
-    public ChatHub(IChannelAccessService channelAccessService, IConversationAccessService conversationAccessService)
+    public ChatHub( IChannelAccessService channelAccessService,IConversationAccessService conversationAccessService,
+     IUserPresenceService userPresenceService,
+     UserConnectionTracker userConnectionTracker)
     {
         _channelAccessService =channelAccessService;
-
         _conversationAccessService = conversationAccessService;
+        _userPresenceService = userPresenceService;
+        _userConnectionTracker = userConnectionTracker;
+    }
+
+
+
+    public override async Task OnConnectedAsync()
+    {
+        var userId =GetCurrentUserId();
+        var isFirstConnection =_userConnectionTracker.AddConnection(
+        userId, Context.ConnectionId);
+        System.Diagnostics.Debug.WriteLine(
+    $"[PRESENCE] Connected: " +
+    $"UserId={userId}, " +
+    $"ConnectionId={Context.ConnectionId}, " +
+    $"IsFirst={isFirstConnection}");
+
+        if (isFirstConnection)
+        {
+            var visibleStatus = await _userPresenceService.MarkConnectedAsync(
+            userId,Context.ConnectionAborted);
+
+            await Clients.All.UserPresenceChanged(
+            userId, visibleStatus);
+        }
+
+        await base.OnConnectedAsync();
+    }
+
+    public override async Task OnDisconnectedAsync( Exception? exception)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var isLastConnection = _userConnectionTracker.RemoveConnection(userId,Context.ConnectionId);
+
+            System.Diagnostics.Debug.WriteLine(
+    $"[PRESENCE] Disconnected: " +
+    $"UserId={userId}, " +
+    $"ConnectionId={Context.ConnectionId}, " +
+    $"IsLast={isLastConnection}");
+
+            if (isLastConnection)
+            {
+                var visibleStatus = await _userPresenceService.MarkDisconnectedAsync(
+                  userId,CancellationToken.None);
+
+                await Clients.All.UserPresenceChanged(userId,visibleStatus);
+            }
+        }
+        finally
+        {
+            await base.OnDisconnectedAsync( exception);
+        }
     }
 
     public async Task JoinChannel(int channelId)

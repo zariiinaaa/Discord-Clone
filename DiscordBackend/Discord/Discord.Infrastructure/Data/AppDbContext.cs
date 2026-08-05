@@ -29,6 +29,8 @@ namespace Discord.Infrastructure.Data
         public DbSet<ConversationMember> ConversationMembers=> Set<ConversationMember>();
         public DbSet<UserPrivacySettings>UserPrivacySettings =>Set<UserPrivacySettings>();
         public DbSet<DirectMessageRequest>DirectMessageRequests =>Set<DirectMessageRequest>();
+
+        public DbSet<MessageAttachment> MessageAttachments { get; set; }= null!;
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);

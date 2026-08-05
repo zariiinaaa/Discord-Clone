@@ -2,6 +2,7 @@
 using Discord.Core.DTOs.Servers.Responses;
 using Discord.Core.Exceptions;
 using Discord.Core.Interfaces;
+using Discord.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -14,10 +15,13 @@ namespace Discord.Controllers;
 public class ServersController : ControllerBase
 {
     private readonly IServerService _serverService;
+    private readonly IFileStorageService _fileStorageService;
 
-    public ServersController(IServerService serverService)
+    public ServersController(IServerService serverService, IFileStorageService fileStorageService)
     {
         _serverService = serverService;
+        _fileStorageService = fileStorageService;
+        
     }
 
     [HttpPost]
@@ -100,6 +104,55 @@ public class ServersController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPut("{serverId:int}/icon")]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType(
+    typeof(ServerResponseDto),
+    StatusCodes.Status200OK)]
+    [ProducesResponseType(
+    StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(
+    StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(
+    StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(
+    StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateServerIcon(int serverId,  IFormFile icon,
+    CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+
+        var currentServer =
+            await _serverService.GetByIdAsync(serverId,userId,
+      cancellationToken);
+
+        if (currentServer.OwnerId != userId)
+        {
+            throw new ForbiddenException(
+                "Yalnız server sahibi server iconunu dəyişə bilər.");
+        }
+
+        var newIconUrl = await _fileStorageService.SaveServerIconAsync( icon,
+        cancellationToken);
+
+        ServerResponseDto result;
+
+        try
+        {
+            result = await _serverService.UpdateIconAsync(serverId,
+            userId, newIconUrl,cancellationToken);
+        }
+        catch
+        {
+            _fileStorageService.DeleteServerIcon(newIconUrl);
+            throw;
+        }
+
+        _fileStorageService.DeleteServerIcon( currentServer.IconUrl);
+
+        return Ok(result);
+    }
+
     [HttpDelete("{serverId:int}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -116,6 +169,8 @@ public class ServersController : ControllerBase
 
         return NoContent();
     }
+
+
 
     private int GetCurrentUserId()
     {

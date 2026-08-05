@@ -1,5 +1,6 @@
 ﻿using Discord.Core.DTOs.Messages.Requests;
 using Discord.Core.DTOs.Messages.Responses;
+using Discord.Core.Models.Files;
 
 namespace Discord.Core.Interfaces;
 
@@ -13,9 +14,9 @@ public interface IMessageService
             int limit = 50,
             CancellationToken cancellationToken = default);
 
-    Task<MessageResponseDto> CreateAsync(int channelId,int userId,
-        CreateMessageRequestDto request,
-        CancellationToken cancellationToken = default);
+    Task<MessageResponseDto> CreateAsync(int channelId,int userId,CreateMessageRequestDto request,
+     IReadOnlyCollection<StoredFileResult> attachments,
+     CancellationToken cancellationToken = default);
 
     Task<MessageResponseDto> UpdateAsync(int channelId,int messageId,
         int userId,
@@ -31,9 +32,8 @@ public interface IMessageService
         int limit = 50,
         CancellationToken cancellationToken = default);
 
-    Task<MessageResponseDto>CreateConversationMessageAsync(int conversationId,int userId,
-            CreateMessageRequestDto request,
-            CancellationToken cancellationToken = default);
+    Task<MessageResponseDto> CreateConversationMessageAsync(int conversationId, int userId,CreateMessageRequestDto request,
+    IReadOnlyCollection<StoredFileResult> attachments,CancellationToken cancellationToken = default);
 
 
     Task<MessageResponseDto>UpdateConversationMessageAsync(int conversationId,int messageId,int userId,

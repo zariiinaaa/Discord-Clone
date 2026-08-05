@@ -9,8 +9,9 @@ namespace Discord.Core.Interfaces
     public interface IChannelService
     {
         Task<ChannelResponseDto> CreateAsync(int serverId,int userId,CreateChannelRequestDto request,CancellationToken cancellationToken = default);
-    
-        
+
+        Task<IReadOnlyList<ChannelResponseDto>> GetByServerAsync(int serverId,int userId,
+        CancellationToken cancellationToken = default);
         Task<ChannelResponseDto> UpdateAsync(int serverId,int channelId,int userId,UpdateChannelRequestDto request,CancellationToken cancellationToken = default);
         Task DeleteAsync(int serverId,int channelId, int userId,CancellationToken cancellationToken = default);
     }

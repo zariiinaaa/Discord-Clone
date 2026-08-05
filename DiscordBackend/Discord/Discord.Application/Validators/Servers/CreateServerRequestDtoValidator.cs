@@ -11,18 +11,29 @@ namespace Discord.Application.Validators.Servers
         public CreateServerRequestDtoValidator()
         {
             RuleFor(request => request.Name)
+                .Cascade(CascadeMode.Stop)
                 .NotEmpty()
-                .WithMessage("Server adı boş ola bilməz.")
+                .WithMessage(
+                    "Server adı boş ola bilməz.")
+                .Must(name =>
+                    !string.IsNullOrWhiteSpace(name))
+                .WithMessage(
+                    "Server adı yalnız boşluqlardan ibarət ola bilməz.")
                 .MinimumLength(2)
-                .WithMessage("Server adı minimum 2 simvol olmalıdır.")
+                .WithMessage(
+                    "Server adı minimum 2 simvol olmalıdır.")
                 .MaximumLength(100)
-                .WithMessage("Server adı maksimum 100 simvol ola bilər.");
+                .WithMessage(
+                    "Server adı maksimum 100 simvol ola bilər.");
 
-            RuleFor(request => request.Description)
+            RuleFor(request =>
+                    request.Description)
                 .MaximumLength(500)
-                .WithMessage("Açıqlama maksimum 500 simvol ola bilər.")
+                .WithMessage(
+                    "Açıqlama maksimum 500 simvol ola bilər.")
                 .When(request =>
-                    !string.IsNullOrWhiteSpace(request.Description));
+                    !string.IsNullOrWhiteSpace(
+                        request.Description));
         }
     }
 }

@@ -21,7 +21,20 @@ public static class MessageMappings
             ReplyToMessageId = message.ReplyToMessageId,
             IsPinned = message.IsPinned,
             EditedAt = message.EditedAt,
-            CreatedAt = message.CreatedAt
+            CreatedAt = message.CreatedAt,
+
+            Attachments = message.Attachments
+                .OrderBy(attachment => attachment.Id)
+                .Select(attachment =>
+                    new MessageAttachmentResponseDto
+                    {
+                        Id = attachment.Id,
+                        FileName = attachment.FileName,
+                        FileUrl = attachment.FileUrl,
+                        ContentType = attachment.ContentType,
+                        FileSize = attachment.FileSize
+                    })
+                .ToArray()
         };
     }
 }

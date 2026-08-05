@@ -16,5 +16,8 @@ namespace Discord.Core.Interfaces
         Task<ServerResponseDto> UpdateAsync(int serverId,int userId,UpdateServerRequestDto request,CancellationToken cancellationToken = default);
 
         Task DeleteAsync(int serverId,int userId,CancellationToken cancellationToken = default);
+
+        Task<ServerResponseDto> UpdateIconAsync(int serverId,int userId,string iconUrl,
+        CancellationToken cancellationToken = default);
     }
 }

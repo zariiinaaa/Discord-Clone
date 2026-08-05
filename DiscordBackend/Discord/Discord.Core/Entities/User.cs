@@ -20,6 +20,7 @@ namespace Discord.Core.Entities
         public string? AvatarUrl { get; set; }
         public string? Bio { get; set; }
         public UserStatus Status { get; set; } = UserStatus.Offline;
+        public UserStatus PreferredStatus { get; set; } = UserStatus.Online;
         public PlatformRole Role { get; set; } = PlatformRole.User;
         public DateTime? LastSeenAt { get; set; }
         public bool IsBanned { get; set; }

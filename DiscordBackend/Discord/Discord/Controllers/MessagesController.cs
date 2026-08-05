@@ -2,7 +2,9 @@
 using Discord.Core.DTOs.Messages.Responses;
 using Discord.Core.Exceptions;
 using Discord.Core.Interfaces;
+using Discord.Core.Models.Files;
 using Discord.Hubs;
+using Discord.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
@@ -17,10 +19,16 @@ public class MessagesController : ControllerBase
 {
     private readonly IMessageService _messageService;
     private readonly IHubContext<ChatHub, IChatClient> _chatHubContext;
-    public MessagesController(IMessageService messageService,IHubContext<ChatHub, IChatClient> chatHubContext)
+    private readonly IFileStorageService _fileStorageService;
+
+    public MessagesController(
+        IMessageService messageService,
+        IHubContext<ChatHub, IChatClient> chatHubContext,
+        IFileStorageService fileStorageService)
     {
         _messageService = messageService;
         _chatHubContext = chatHubContext;
+        _fileStorageService = fileStorageService;
     }
 
     [HttpGet]
@@ -37,15 +45,14 @@ public class MessagesController : ControllerBase
         [FromQuery] int limit = 50,
         CancellationToken cancellationToken = default)
     {
-        var result =
-            await _messageService.GetChannelMessagesAsync(channelId,GetCurrentUserId(), beforeMessageId,
-                limit,
-                cancellationToken);
+        var result = await _messageService.GetChannelMessagesAsync(channelId,
+       GetCurrentUserId(),beforeMessageId,limit,cancellationToken);
 
         return Ok(result);
     }
 
     [HttpPost]
+    [Consumes("multipart/form-data")]
     [ProducesResponseType(
         typeof(MessageResponseDto),
         StatusCodes.Status201Created)]
@@ -53,16 +60,44 @@ public class MessagesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Create(int channelId,CreateMessageRequestDto request,
+    public async Task<IActionResult> Create(
+        int channelId,
+        [FromForm] CreateMessageRequestDto request,
+        [FromForm] List<IFormFile>? attachments,
         CancellationToken cancellationToken)
     {
-        var result = await _messageService.CreateAsync(
-            channelId,
-            GetCurrentUserId(),
-            request,
-            cancellationToken);
+        var userId = GetCurrentUserId();
 
-        await _chatHubContext.Clients.Group(ChatHub.GetChannelGroupName(channelId)).MessageCreated(result);
+        var storedAttachments =new List<StoredFileResult>();
+
+        MessageResponseDto result;
+
+        try
+        {
+            foreach (var file in attachments ?? new List<IFormFile>())
+            {
+                var storedFile = await _fileStorageService.SaveMessageAttachmentAsync( file,cancellationToken);
+
+                storedAttachments.Add(storedFile);
+            }
+
+            result = await _messageService.CreateAsync(channelId,userId, request,storedAttachments,
+           cancellationToken);
+        }
+        catch
+        {
+            foreach (var attachment in storedAttachments)
+            {
+                _fileStorageService.DeleteMessageAttachment(
+                    attachment.FileUrl);
+            }
+
+            throw;
+        }
+
+        await _chatHubContext.Clients
+            .Group(ChatHub.GetChannelGroupName(channelId))
+            .MessageCreated(result);
 
         return StatusCode(
             StatusCodes.Status201Created,
@@ -77,8 +112,7 @@ public class MessagesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Update( int channelId,int messageId,
-        UpdateMessageRequestDto request,
+    public async Task<IActionResult> Update(int channelId, int messageId,UpdateMessageRequestDto request,
         CancellationToken cancellationToken)
     {
         var result = await _messageService.UpdateAsync(
@@ -88,7 +122,9 @@ public class MessagesController : ControllerBase
             request,
             cancellationToken);
 
-        await _chatHubContext.Clients.Group(ChatHub.GetChannelGroupName(channelId)).MessageUpdated(result);
+        await _chatHubContext.Clients
+            .Group(ChatHub.GetChannelGroupName(channelId))
+            .MessageUpdated(result);
 
         return Ok(result);
     }
@@ -98,26 +134,26 @@ public class MessagesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Delete(int channelId,int messageId,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> Delete(int channelId, int messageId,CancellationToken cancellationToken)
     {
-        await _messageService.DeleteAsync(
-            channelId,
-            messageId,
-            GetCurrentUserId(),
-            cancellationToken);
-        await _chatHubContext.Clients.Group(ChatHub.GetChannelGroupName(channelId)).MessageDeleted(channelId, messageId);
+        await _messageService.DeleteAsync(channelId, messageId,GetCurrentUserId(),
+        cancellationToken);
+
+        await _chatHubContext.Clients
+            .Group(ChatHub.GetChannelGroupName(channelId))
+            .MessageDeleted(channelId, messageId);
 
         return NoContent();
     }
 
     private int GetCurrentUserId()
     {
-        var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userIdValue =User.FindFirstValue(ClaimTypes.NameIdentifier);
 
         if (!int.TryParse(userIdValue, out var userId))
         {
-            throw new UnauthorizedException("Access token etibarsızdır.");
+            throw new UnauthorizedException(
+                "Access token etibarsızdır.");
         }
 
         return userId;

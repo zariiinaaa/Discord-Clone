@@ -48,6 +48,11 @@ namespace Discord.Infrastructure.Data.Configurations
                 .HasConversion<int>()
                 .HasDefaultValue(UserStatus.Offline);
 
+            builder.Property(user => user.PreferredStatus)
+                .HasConversion<int>()
+                .HasDefaultValue(UserStatus.Online)
+                .HasSentinel(UserStatus.Offline);
+
             builder.Property(user => user.Role)
                 .HasConversion<int>()
                 .HasDefaultValue(PlatformRole.User);

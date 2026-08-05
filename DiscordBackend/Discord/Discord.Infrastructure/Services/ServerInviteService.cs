@@ -71,20 +71,29 @@ public class ServerInviteService : IServerInviteService
         return invite.ToResponseDto(server.Name);
     }
 
-    public async Task JoinAsync(string code,int userId,CancellationToken cancellationToken = default)
+    public async Task JoinAsync(string code,int userId,
+    CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(code))
         {
-            throw new BadRequestException("Dəvət kodu boş ola bilməz.");
+            throw new BadRequestException(
+                "Dəvət kodu boş ola bilməz.");
         }
 
-        var normalizedCode = code.Trim().ToLowerInvariant();
+        var normalizedCode =code.Trim().ToLowerInvariant();
 
-        var invite = await _dbContext.ServerInvites
-            .FirstOrDefaultAsync(
-                invite => invite.Code == normalizedCode,
-                cancellationToken)
-            ?? throw new KeyNotFoundException(
+        await using var transaction =
+            await _dbContext.Database
+                .BeginTransactionAsync(
+                    System.Data.IsolationLevel.Serializable,
+                    cancellationToken);
+
+        var invite =
+            await _dbContext.ServerInvites
+                .FirstOrDefaultAsync(
+                    invite =>
+                        invite.Code ==normalizedCode,
+                    cancellationToken)?? throw new KeyNotFoundException(
                 "Dəvət tapılmadı.");
 
         if (invite.IsRevoked)
@@ -94,43 +103,177 @@ public class ServerInviteService : IServerInviteService
         }
 
         if (invite.ExpiresAt.HasValue &&
-            invite.ExpiresAt.Value <= DateTime.UtcNow)
+            invite.ExpiresAt.Value <=
+            DateTime.UtcNow)
         {
-            throw new BadRequestException(
-                "Bu dəvətin istifadə müddəti bitib.");
+            throw new BadRequestException("Bu dəvətin istifadə müddəti bitib.");
         }
 
         if (invite.MaxUses.HasValue &&
-            invite.Uses >= invite.MaxUses.Value)
+            invite.Uses >=
+            invite.MaxUses.Value)
         {
             throw new BadRequestException(
                 "Bu dəvətin istifadə limiti bitib.");
         }
 
-        var isAlreadyMember =await _dbContext.ServerMembers.AnyAsync(
-                member =>member.ServerId == invite.ServerId &&
-                    member.UserId == userId,
-                cancellationToken);
+        var isAlreadyMember =await _dbContext.ServerMembers
+                .AnyAsync(
+                    member =>
+                        member.ServerId == invite.ServerId &&
+                        member.UserId ==  userId, cancellationToken);
 
         if (isAlreadyMember)
         {
-            throw new ConflictException("İstifadəçi artıq bu serverin üzvüdür.");
+            throw new ConflictException(
+                "İstifadəçi artıq bu serverin üzvüdür.");
         }
 
         var serverMember = new ServerMember
-        {
-            ServerId = invite.ServerId,
-            UserId = userId,
-            IsMuted = false,
-            IsDeafened = false
-        };
+            {
+                ServerId = invite.ServerId,
+                UserId = userId,
+                IsMuted = false,
+                IsDeafened = false
+            };
 
         _dbContext.ServerMembers.Add(serverMember);
 
         invite.Uses++;
         invite.UpdatedAt = DateTime.UtcNow;
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        await _dbContext.SaveChangesAsync(
+            cancellationToken);
+
+        await transaction.CommitAsync(
+            cancellationToken);
+    }
+
+    public async Task<ServerInviteDetailsResponseDto> GetInviteDetailsAsync(string code,int userId,
+        CancellationToken cancellationToken =
+            default)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            throw new BadRequestException(
+                "Dəvət kodu boş ola bilməz.");
+        }
+
+        var normalizedCode =code.Trim().ToLowerInvariant();
+
+        var invite =await _dbContext.ServerInvites
+                .AsNoTracking()
+                .Include(invite =>
+                    invite.Server)
+                .ThenInclude(server =>
+                    server.Members)
+                .Include(invite =>
+                    invite.CreatedByUser)
+                .FirstOrDefaultAsync(
+                    invite =>invite.Code ==normalizedCode,cancellationToken)?? throw new KeyNotFoundException(
+                "Dəvət tapılmadı.");
+
+        if (invite.IsRevoked)
+        {
+            throw new BadRequestException("Bu dəvət ləğv edilib.");
+        }
+
+        if (
+            invite.ExpiresAt.HasValue &&
+            invite.ExpiresAt.Value <= DateTime.UtcNow
+        )
+        {
+            throw new BadRequestException(
+                "Bu dəvətin istifadə müddəti bitib.");
+        }
+
+        if (
+            invite.MaxUses.HasValue &&
+            invite.Uses >=invite.MaxUses.Value
+        )
+        {
+            throw new BadRequestException(
+                "Bu dəvətin istifadə limiti bitib.");
+        }
+
+        var isAlreadyMember =invite.Server.Members.Any(
+                member => member.UserId == userId);
+
+        return new ServerInviteDetailsResponseDto
+        {
+            Code = invite.Code,
+            ServerId = invite.ServerId,
+            ServerName =invite.Server.Name,
+            ServerDescription = invite.Server.Description,
+            ServerIconUrl =invite.Server.IconUrl,
+            MemberCount =  invite.Server.Members.Count,
+            CreatedByDisplayName =invite.CreatedByUser.DisplayName,
+            ExpiresAt = invite.ExpiresAt,
+            MaxUses = invite.MaxUses,
+            Uses = invite.Uses,
+            IsAlreadyMember =isAlreadyMember
+        };
+    }
+
+    public async Task<IReadOnlyCollection<ServerInviteResponseDto>>GetServerInvitesAsync( int serverId,int userId,
+        CancellationToken cancellationToken = default)
+    {
+        var server =await _dbContext.Servers.AsNoTracking().FirstOrDefaultAsync(
+                    server =>server.Id == serverId,cancellationToken)?? throw new KeyNotFoundException("Server tapılmadı.");
+
+        if (server.OwnerId != userId)
+        {
+            throw new ForbiddenException("Yalnız server sahibi dəvətləri görə bilər.");
+        }
+
+        var invites =await _dbContext.ServerInvites
+                .AsNoTracking()
+                .Where(invite =>
+                    invite.ServerId == serverId &&
+                    !invite.IsRevoked)
+                .OrderByDescending(invite =>
+                    invite.CreatedAt)
+                .ToListAsync(
+                    cancellationToken);
+
+        return invites
+            .Select(invite =>
+                invite.ToResponseDto(
+                    server.Name))
+            .ToArray();
+    }
+
+    public async Task RevokeAsync(int serverId,int inviteId,int userId,
+        CancellationToken cancellationToken = default)
+    {
+        var invite =
+            await _dbContext.ServerInvites
+                .Include(invite =>
+                    invite.Server)
+                .FirstOrDefaultAsync(
+                    invite =>
+                        invite.Id == inviteId &&
+                        invite.ServerId == serverId,
+                    cancellationToken)
+            ?? throw new KeyNotFoundException(
+                "Dəvət tapılmadı.");
+
+        if (invite.Server.OwnerId != userId)
+        {
+            throw new ForbiddenException(
+                "Yalnız server sahibi dəvəti ləğv edə bilər.");
+        }
+
+        if (invite.IsRevoked)
+        {
+            return;
+        }
+
+        invite.IsRevoked = true;
+        invite.UpdatedAt = DateTime.UtcNow;
+
+        await _dbContext.SaveChangesAsync(
+            cancellationToken);
     }
 
     private static string GenerateInviteCode()
@@ -139,4 +282,6 @@ public class ServerInviteService : IServerInviteService
 
         return Convert.ToHexString(randomBytes).ToLowerInvariant();
     }
+
+   
 }

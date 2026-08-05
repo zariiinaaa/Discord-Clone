@@ -2,9 +2,11 @@
 using Discord.Core.DTOs.Users.Responses;
 using Discord.Core.Exceptions;
 using Discord.Core.Interfaces;
+using Discord.Hubs;
 using Discord.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using System.Security.Claims;
 
 namespace Discord.Controllers;
@@ -16,13 +18,17 @@ public class UsersController : ControllerBase
 {
     private readonly IUserService _userService;
     private readonly IFileStorageService _fileStorageService;
-
+    private readonly IUserPresenceService _userPresenceService;
+    private readonly IHubContext<ChatHub, IChatClient> _hubContext;
     public UsersController(
         IUserService userService,
-        IFileStorageService fileStorageService)
+        IFileStorageService fileStorageService, IUserPresenceService userPresenceService,
+        IHubContext<ChatHub, IChatClient> hubContext)
     {
         _userService = userService;
         _fileStorageService = fileStorageService;
+        _userPresenceService = userPresenceService;
+        _hubContext = hubContext;
     }
 
     [HttpGet("me")]
@@ -129,6 +135,28 @@ public class UsersController : ControllerBase
             currentUser.AvatarUrl);
 
         return NoContent();
+    }
+
+    [HttpPatch("me/status")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ChangeStatus(ChangeStatusRequestDto request,
+    CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+
+        var visibleStatus =await _userPresenceService.ChangeStatusAsync(
+        userId,request.Status,cancellationToken);
+
+        await _hubContext.Clients.All.UserPresenceChanged(
+            userId, visibleStatus);
+
+        return Ok(new
+        {
+            preferredStatus = request.Status.ToString(),
+            visibleStatus = visibleStatus.ToString()
+        });
     }
 
     private int GetCurrentUserId()

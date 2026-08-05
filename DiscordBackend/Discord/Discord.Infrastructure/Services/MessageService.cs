@@ -7,9 +7,11 @@ using Discord.Core.Entities.Servers;
 using Discord.Core.Enums;
 using Discord.Core.Exceptions;
 using Discord.Core.Interfaces;
+using Discord.Core.Models.Files;
 using Discord.Infrastructure.Data;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using System.Reflection.Metadata;
 
 namespace Discord.Infrastructure.Services;
 
@@ -58,9 +60,12 @@ public class MessageService : IMessageService
             throw new BadRequestException("Mesaj ID-si düzgün deyil.");
         }
 
-        var query = _dbContext.Messages.AsNoTracking().Include(message => message.Author)
-            .Where(message =>
-                message.ChannelId == channelId);
+        var query = _dbContext.Messages
+     .AsNoTracking()
+     .Include(message => message.Author)
+     .Include(message => message.Attachments)
+     .Where(message =>
+         message.ChannelId == channelId);
 
         if (beforeMessageId.HasValue)
         {
@@ -110,11 +115,11 @@ public class MessageService : IMessageService
         }
 
         var query = _dbContext.Messages
-            .AsNoTracking()
-            .Include(message => message.Author)
-            .Where(message =>
-                message.ConversationId ==
-                conversationId);
+      .AsNoTracking()
+      .Include(message => message.Author)
+      .Include(message => message.Attachments)
+      .Where(message =>
+          message.ConversationId == conversationId);
 
         if (beforeMessageId.HasValue)
         {
@@ -138,20 +143,29 @@ public class MessageService : IMessageService
     }
 
 
-    public async Task<MessageResponseDto>CreateConversationMessageAsync(int conversationId, int userId,
-        CreateMessageRequestDto request,
-        CancellationToken cancellationToken = default)
+    public async Task<MessageResponseDto>CreateConversationMessageAsync(int conversationId, int userId,CreateMessageRequestDto request,
+        IReadOnlyCollection<StoredFileResult> attachments,CancellationToken cancellationToken = default)
     {
-        var validationResult =
-            await _createMessageValidator
-                .ValidateAsync(
-                    request,
-                    cancellationToken);
+        var validationResult = await _createMessageValidator.ValidateAsync(
+         request,cancellationToken);
+
+        
+
 
         if (!validationResult.IsValid)
         {
             throw new ValidationException(
                 validationResult.Errors);
+        }
+
+        var normalizedContent =
+    request.Content?.Trim() ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(normalizedContent) &&
+            attachments.Count == 0)
+        {
+            throw new BadRequestException(
+                "Mesaj mətni və ya ən azı bir attachment olmalıdır.");
         }
 
         var conversation =
@@ -215,19 +229,11 @@ public class MessageService : IMessageService
 
         var message = new Message
         {
-            Content =
-                request.Content.Trim(),
-
+            Content = normalizedContent,
             ChannelId = null,
-
-            ConversationId =
-                conversationId,
-
+            ConversationId = conversationId,
             AuthorId = userId,
-
-            ReplyToMessageId =
-                request.ReplyToMessageId,
-
+            ReplyToMessageId = request.ReplyToMessageId,
             IsPinned = false
         };
 
@@ -251,17 +257,26 @@ public class MessageService : IMessageService
         return message.ToResponseDto();
     }
 
-    public async Task<MessageResponseDto> CreateAsync(int channelId,int userId,
-        CreateMessageRequestDto request,
-        CancellationToken cancellationToken = default)
+    public async Task<MessageResponseDto> CreateAsync(int channelId,int userId,CreateMessageRequestDto request,
+    IReadOnlyCollection<StoredFileResult> attachments,
+    CancellationToken cancellationToken = default)
     {
-        var validationResult =
-            await _createMessageValidator.ValidateAsync(request,
+        var validationResult = await _createMessageValidator.ValidateAsync(request,
                 cancellationToken);
+        
 
         if (!validationResult.IsValid)
         {
             throw new ValidationException(validationResult.Errors);
+        }
+
+        var normalizedContent = request.Content?.Trim() ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(normalizedContent) &&
+            attachments.Count == 0)
+        {
+            throw new BadRequestException(
+                "Mesaj mətni və ya ən azı bir attachment olmalıdır.");
         }
 
         await _channelAccessService.GetAccessibleTextChannelAsync(channelId,userId,cancellationToken);
@@ -285,12 +300,26 @@ public class MessageService : IMessageService
 
         var message = new Message
         {
-            Content = request.Content.Trim(),
+            Content = normalizedContent,
             ChannelId = channelId,
             AuthorId = userId,
             ReplyToMessageId = request.ReplyToMessageId,
             IsPinned = false
         };
+
+        
+        foreach (var attachment in attachments)
+        {
+            message.Attachments.Add(
+                new MessageAttachment
+                {
+                    FileName = attachment.FileName,
+                    StoredFileName = attachment.StoredFileName,
+                    FileUrl = attachment.FileUrl,
+                    ContentType = attachment.ContentType,
+                    FileSize = attachment.FileSize
+                });
+        }
 
         _dbContext.Messages.Add(message);
 
@@ -327,13 +356,13 @@ public class MessageService : IMessageService
 
         var message = await _dbContext.Messages
             .Include(message => message.Author)
+            .Include(message => message.Attachments)
             .FirstOrDefaultAsync(
-                message =>
-                    message.Id == messageId &&
-                    message.ChannelId == channelId,
-                cancellationToken)
-            ?? throw new KeyNotFoundException(
-                "Mesaj tapılmadı.");
+             message =>
+            message.Id == messageId &&
+            message.ChannelId == channelId,
+        cancellationToken)
+                ?? throw new KeyNotFoundException("Mesaj tapılmadı.");
 
         if (message.AuthorId != userId)
         {
@@ -342,6 +371,7 @@ public class MessageService : IMessageService
         }
 
         message.Content = request.Content.Trim();
+        
         message.EditedAt = DateTime.UtcNow;
         message.UpdatedAt = DateTime.UtcNow;
 
@@ -426,15 +456,15 @@ public class MessageService : IMessageService
                 cancellationToken);
 
         var message = await _dbContext.Messages
-            .Include(message => message.Author)
-            .FirstOrDefaultAsync(
-                message =>
-                    message.Id == messageId &&
-                    message.ConversationId ==
-                        conversationId,
-                cancellationToken)
-            ?? throw new KeyNotFoundException(
-                "Mesaj tapılmadı.");
+      .Include(message => message.Author)
+      .Include(message => message.Attachments)
+      .FirstOrDefaultAsync(
+          message =>
+              message.Id == messageId &&
+              message.ConversationId == conversationId,
+          cancellationToken)
+      ?? throw new KeyNotFoundException(
+          "Mesaj tapılmadı.");
 
         if (message.AuthorId != userId)
         {

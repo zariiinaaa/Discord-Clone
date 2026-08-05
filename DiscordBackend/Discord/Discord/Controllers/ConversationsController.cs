@@ -5,7 +5,9 @@ using Discord.Core.DTOs.Messages.Responses;
 using Discord.Core.Enums;
 using Discord.Core.Exceptions;
 using Discord.Core.Interfaces;
+using Discord.Core.Models.Files;
 using Discord.Hubs;
+using Discord.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
@@ -20,13 +22,21 @@ public class ConversationsController : ControllerBase
 {
     private readonly IConversationService _conversationService;
     private readonly IMessageService _messageService;
-    private readonly IHubContext<ChatHub, IChatClient>_chatHubContext;
-    public ConversationsController(IConversationService conversationService,IMessageService messageService,
-        IHubContext<ChatHub, IChatClient> chatHubContext)
+
+    private readonly IHubContext<ChatHub, IChatClient> _chatHubContext;
+
+    private readonly IFileStorageService _fileStorageService;
+
+    public ConversationsController(
+        IConversationService conversationService,
+        IMessageService messageService,
+        IHubContext<ChatHub, IChatClient> chatHubContext,
+        IFileStorageService fileStorageService)
     {
         _conversationService = conversationService;
         _messageService = messageService;
         _chatHubContext = chatHubContext;
+        _fileStorageService = fileStorageService;
     }
 
     [HttpGet]
@@ -40,10 +50,9 @@ public class ConversationsController : ControllerBase
         var userId = GetCurrentUserId();
 
         var result =
-            await _conversationService
-                .GetMyConversationsAsync(
-                    userId,
-                    cancellationToken);
+            await _conversationService.GetMyConversationsAsync(
+                userId,
+                cancellationToken);
 
         return Ok(result);
     }
@@ -91,9 +100,13 @@ public class ConversationsController : ControllerBase
                     request,
                     cancellationToken);
 
-        
-        await _chatHubContext.Clients.User(userId.ToString()).ConversationDataChanged();
-        return StatusCode(StatusCodes.Status201Created,result);
+        await _chatHubContext.Clients
+            .User(userId.ToString())
+            .ConversationDataChanged();
+
+        return StatusCode(
+            StatusCodes.Status201Created,
+            result);
     }
 
     [HttpPost("group")]
@@ -117,7 +130,7 @@ public class ConversationsController : ControllerBase
                     request,
                     cancellationToken);
 
-        await NotifyConversationMembersAsync( result);
+        await NotifyConversationMembersAsync(result);
 
         return StatusCode(
             StatusCodes.Status201Created,
@@ -186,20 +199,12 @@ public class ConversationsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> RemoveGroupMember(
-        int conversationId,
-        int memberUserId,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> RemoveGroupMember(int conversationId,int memberUserId,CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();
 
-        var result =
-            await _conversationService
-                .RemoveGroupMemberAsync(
-                    conversationId,
-                    userId,
-                    memberUserId,
-                    cancellationToken);
+        var result =await _conversationService.RemoveGroupMemberAsync(
+        conversationId, userId, memberUserId, cancellationToken);
 
         return Ok(result);
     }
@@ -210,40 +215,29 @@ public class ConversationsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> LeaveGroupConversation(
-        int conversationId,
-        CancellationToken cancellationToken)
+    public async Task<IActionResult> LeaveGroupConversation(int conversationId,CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();
 
-        await _conversationService
-            .LeaveGroupConversationAsync(
-                conversationId,
-                userId,
-                cancellationToken);
+        await _conversationService.LeaveGroupConversationAsync(conversationId,userId,cancellationToken);
 
         return NoContent();
     }
 
     [HttpPut("{conversationId:int}/mute")]
-    [ProducesResponseType(
-    StatusCodes.Status204NoContent)]
-    [ProducesResponseType(
-    StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(
-    StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(
-    StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdateMuteStatus(int conversationId,UpdateConversationMuteRequestDto request,
-    CancellationToken cancellationToken)
+        CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();
 
-        await _conversationService.UpdateMuteStatusAsync(conversationId, userId,request,
-                cancellationToken);
+        await _conversationService.UpdateMuteStatusAsync(conversationId,userId,request,cancellationToken);
+
         return NoContent();
     }
-
 
     [HttpGet("{conversationId:int}/messages")]
     [ProducesResponseType(
@@ -253,140 +247,128 @@ public class ConversationsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetMessages(
-        int conversationId,
-        [FromQuery] int? beforeMessageId,
-        [FromQuery] int limit = 50,
-        CancellationToken cancellationToken = default)
+    public async Task<IActionResult> GetMessages(int conversationId,[FromQuery] int? beforeMessageId,
+    [FromQuery] int limit = 50,CancellationToken cancellationToken = default)
     {
         var userId = GetCurrentUserId();
 
-        var result =
-            await _messageService
-                .GetConversationMessagesAsync(
-                    conversationId,
-                    userId,
-                    beforeMessageId,
-                    limit,
-                    cancellationToken);
+        var result =await _messageService.GetConversationMessagesAsync(
+          conversationId,
+           userId, beforeMessageId, limit, cancellationToken);
 
         return Ok(result);
     }
 
     [HttpPost("{conversationId:int}/messages")]
+    [Consumes("multipart/form-data")]
     [ProducesResponseType(
-    typeof(MessageResponseDto),
-    StatusCodes.Status201Created)]
-    [ProducesResponseType(
-    StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(
-    StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(
-    StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(
-    StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> CreateMessage(int conversationId, CreateMessageRequestDto request,
-    CancellationToken cancellationToken)
-    {
-        var userId = GetCurrentUserId();
-
-        var conversation = await _conversationService
-                .GetByIdAsync(
-                    conversationId,
-                    userId,
-                    cancellationToken);
-
-        var result = await _messageService
-                .CreateConversationMessageAsync(
-                    conversationId,
-                    userId,
-                    request,
-                    cancellationToken);
-
-        var groupName =ChatHub.GetConversationGroupName(
-                conversationId);
-
-        await _chatHubContext.Clients.Group(groupName).ConversationMessageCreated(
-                conversationId,
-                result);
-
-        await NotifyConversationMembersAsync(conversation);
-
-        if (
-            conversation.Type ==ConversationType.Direct
-        )
-        {
-            var recipient = conversation.Members.FirstOrDefault(member =>
-                        member.UserId != userId);
-
-            if (recipient is not null)
-            {
-                await _chatHubContext.Clients .User(
-                        recipient.UserId.ToString()
-                    ).DirectMessageRequestCreated();
-            }
-        }
-
-        return StatusCode(StatusCodes.Status201Created,result);
-    }
-
-    [HttpPatch(
-    "{conversationId:int}/messages/{messageId:int}")]
-    [ProducesResponseType(
-    typeof(MessageResponseDto),
-    StatusCodes.Status200OK)]
+        typeof(MessageResponseDto),
+        StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> UpdateMessage(int conversationId,int messageId,UpdateMessageRequestDto request,
-    CancellationToken cancellationToken)
+    public async Task<IActionResult> CreateMessage(int conversationId,[FromForm] CreateMessageRequestDto request,
+        [FromForm] List<IFormFile>? attachments,
+        CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();
 
-        var result = await _messageService
-            .UpdateConversationMessageAsync(
-                conversationId,
-                messageId,
-                userId,
-                request,
-                cancellationToken);
+        var conversation =await _conversationService.GetByIdAsync(
+       conversationId,userId,cancellationToken);
 
-        var groupName =
-            ChatHub.GetConversationGroupName(
-                conversationId);
+        var storedAttachments = new List<StoredFileResult>();
 
-        await _chatHubContext.Clients
-            .Group(groupName)
-            .ConversationMessageUpdated(
-                conversationId,
-                result);
+        MessageResponseDto result;
+
+        try
+        {
+            foreach (var file in
+                     attachments ?? new List<IFormFile>())
+            {
+                var storedFile =await _fileStorageService.SaveMessageAttachmentAsync(file,
+               cancellationToken);
+
+                storedAttachments.Add(storedFile);
+            }
+
+            result =await _messageService.CreateConversationMessageAsync( conversationId,userId,request,storedAttachments,
+               cancellationToken);
+        }
+        catch
+        {
+            foreach (var attachment in storedAttachments)
+            {
+                _fileStorageService.DeleteMessageAttachment(attachment.FileUrl);
+            }
+
+            throw;
+        }
+
+        var groupName = ChatHub.GetConversationGroupName(conversationId);
+
+        await _chatHubContext.Clients.Group(groupName) .ConversationMessageCreated( conversationId,
+         result);
+
+        await NotifyConversationMembersAsync(conversation);
+
+        if (conversation.Type == ConversationType.Direct)
+        {
+            var recipient =conversation.Members.FirstOrDefault( member => member.UserId != userId);
+
+            if (recipient is not null)
+            {
+                await _chatHubContext.Clients.User(recipient.UserId.ToString())
+                    .DirectMessageRequestCreated();
+            }
+        }
+
+        return StatusCode(
+            StatusCodes.Status201Created,
+            result);
+    }
+
+    [HttpPatch(
+        "{conversationId:int}/messages/{messageId:int}")]
+    [ProducesResponseType(
+        typeof(MessageResponseDto),
+        StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateMessage(int conversationId,int messageId, UpdateMessageRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+
+        var result = await _messageService.UpdateConversationMessageAsync( conversationId, messageId, userId,
+         request, cancellationToken);
+
+
+        var groupName = ChatHub.GetConversationGroupName(conversationId);
+
+        await _chatHubContext.Clients .Group(groupName).ConversationMessageUpdated( conversationId,
+        result);
 
         return Ok(result);
     }
 
     [HttpDelete(
-    "{conversationId:int}/messages/{messageId:int}")]
+        "{conversationId:int}/messages/{messageId:int}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> DeleteMessage(int conversationId,int messageId,
-    CancellationToken cancellationToken)
+    public async Task<IActionResult> DeleteMessage(int conversationId,int messageId,CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();
 
-        await _messageService
-            .DeleteConversationMessageAsync(
-                conversationId,
-                messageId,
-                userId,
-                cancellationToken);
+        await _messageService.DeleteConversationMessageAsync( conversationId,messageId,userId,
+        cancellationToken);
 
-        var groupName =
-            ChatHub.GetConversationGroupName(
-                conversationId);
+        var groupName =ChatHub.GetConversationGroupName(conversationId);
 
         await _chatHubContext.Clients
             .Group(groupName)
@@ -397,52 +379,37 @@ public class ConversationsController : ControllerBase
         return NoContent();
     }
 
-
-
     [HttpPut("{conversationId:int}/read")]
-    [ProducesResponseType(
-    StatusCodes.Status204NoContent)]
-    [ProducesResponseType(
-    StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(
-    StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(
-    StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> MarkAsRead(int conversationId,CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();
 
-        await _conversationService
-            .MarkAsReadAsync(
-                conversationId,
-                userId,
-                cancellationToken);
+        await _conversationService.MarkAsReadAsync( conversationId,userId,cancellationToken);
 
         return NoContent();
     }
 
     private Task NotifyConversationMembersAsync(
-    ConversationResponseDto conversation)
+        ConversationResponseDto conversation)
     {
-        var memberUserIds =
-            conversation.Members
-                .Select(member =>
-                    member.UserId.ToString())
-                .ToArray();
+        var memberUserIds = conversation.Members.Select(member =>member.UserId.ToString()).ToArray();
 
         if (memberUserIds.Length == 0)
         {
             return Task.CompletedTask;
         }
 
-        return _chatHubContext.Clients
-            .Users(memberUserIds)
+        return _chatHubContext.Clients.Users(memberUserIds)
             .ConversationDataChanged();
     }
+
     private int GetCurrentUserId()
     {
-        var userIdValue =
-            User.FindFirstValue(
+        var userIdValue = User.FindFirstValue(
                 ClaimTypes.NameIdentifier);
 
         if (!int.TryParse(userIdValue, out var userId))

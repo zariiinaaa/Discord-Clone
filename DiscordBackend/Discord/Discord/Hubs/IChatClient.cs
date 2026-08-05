@@ -1,4 +1,5 @@
 ﻿using Discord.Core.DTOs.Messages.Responses;
+using Discord.Core.Enums;
 
 namespace Discord.Hubs;
 
@@ -14,4 +15,7 @@ public interface IChatClient
     Task DirectMessageRequestCreated();
     Task FriendDataChanged();
     Task ConversationDataChanged();
+    Task UserPresenceChanged(int userId,UserStatus status);
+    Task ServerMembersChanged(int serverId);
+
 }

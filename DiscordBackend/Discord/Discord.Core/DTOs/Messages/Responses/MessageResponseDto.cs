@@ -19,4 +19,6 @@ public class MessageResponseDto
     public DateTime CreatedAt { get; set; }
 
     public int? ConversationId { get; set; }
+    public IReadOnlyCollection<MessageAttachmentResponseDto> Attachments { get; set; }
+    = Array.Empty<MessageAttachmentResponseDto>();
 }

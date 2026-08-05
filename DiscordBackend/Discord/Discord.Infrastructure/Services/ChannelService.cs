@@ -28,6 +28,41 @@ public class ChannelService : IChannelService
         _updateChannelValidator = updateChannelValidator;
     }
 
+    public async Task<IReadOnlyList<ChannelResponseDto>> GetByServerAsync(int serverId,int userId,
+    CancellationToken cancellationToken = default)
+    {
+        var serverExists = await _dbContext.Servers
+            .AsNoTracking()
+            .AnyAsync( server => server.Id == serverId,cancellationToken);
+
+        if (!serverExists)
+        {
+            throw new KeyNotFoundException(
+                "Server tapılmadı.");
+        }
+
+        var isMember = await _dbContext.ServerMembers
+            .AsNoTracking()
+            .AnyAsync( member => member.ServerId == serverId &&member.UserId == userId,
+              cancellationToken);
+
+        if (!isMember)
+        {
+            throw new ForbiddenException( "Yalnız server üzvləri kanalları görə bilər.");
+        }
+
+        var channels = await _dbContext.Channels
+            .AsNoTracking()
+            .Where(channel => channel.ServerId == serverId)
+            .OrderBy(channel => channel.ParentCategoryId)
+            .ThenBy(channel => channel.Position)
+            .ToListAsync(cancellationToken);
+
+        return channels
+            .Select(channel => channel.ToResponseDto())
+            .ToList();
+    }
+
     public async Task<ChannelResponseDto> CreateAsync(int serverId,int userId,CreateChannelRequestDto request,
         CancellationToken cancellationToken = default)
     {

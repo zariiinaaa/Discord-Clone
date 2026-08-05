@@ -20,6 +20,23 @@ public class ServerInvitesController : ControllerBase
         _serverInviteService = serverInviteService;
     }
 
+
+    [HttpGet]
+    [ProducesResponseType(
+    typeof(IReadOnlyCollection<ServerInviteResponseDto>),StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType( StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetAll(
+    int serverId,
+    CancellationToken cancellationToken)
+    {
+        var result = await _serverInviteService.GetServerInvitesAsync(serverId, GetCurrentUserId(),
+         cancellationToken);
+
+        return Ok(result);
+    }
+
     [HttpPost]
     [ProducesResponseType(typeof(ServerInviteResponseDto),StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -34,6 +51,19 @@ public class ServerInvitesController : ControllerBase
         var result = await _serverInviteService.CreateAsync(serverId,GetCurrentUserId(),request,cancellationToken);
 
         return StatusCode(StatusCodes.Status201Created,result);
+    }
+
+    [HttpDelete("{inviteId:int}")][ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Revoke(int serverId,int inviteId,
+    CancellationToken cancellationToken)
+    {
+        await _serverInviteService.RevokeAsync(serverId,inviteId,
+        GetCurrentUserId(),cancellationToken);
+
+        return NoContent();
     }
 
     private int GetCurrentUserId()

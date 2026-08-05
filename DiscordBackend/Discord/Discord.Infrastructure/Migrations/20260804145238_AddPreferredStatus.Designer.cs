@@ -4,6 +4,7 @@ using Discord.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Discord.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260804145238_AddPreferredStatus")]
+    partial class AddPreferredStatus
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -312,56 +315,6 @@ namespace Discord.Infrastructure.Migrations
                     b.ToTable("Messages", null, t =>
                         {
                             t.HasCheckConstraint("CK_Messages_Parent", "([ChannelId] IS NOT NULL AND [ConversationId] IS NULL) OR ([ChannelId] IS NULL AND [ConversationId] IS NOT NULL)");
-                        });
-                });
-
-            modelBuilder.Entity("Discord.Core.Entities.Messages.MessageAttachment", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("ContentType")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("FileName")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<long>("FileSize")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("FileUrl")
-                        .IsRequired()
-                        .HasMaxLength(2048)
-                        .HasColumnType("nvarchar(2048)");
-
-                    b.Property<int>("MessageId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("StoredFileName")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("MessageId");
-
-                    b.ToTable("MessageAttachments", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_MessageAttachments_FileSize", "[FileSize] > 0");
                         });
                 });
 
@@ -885,17 +838,6 @@ namespace Discord.Infrastructure.Migrations
                     b.Navigation("ReplyToMessage");
                 });
 
-            modelBuilder.Entity("Discord.Core.Entities.Messages.MessageAttachment", b =>
-                {
-                    b.HasOne("Discord.Core.Entities.Messages.Message", "Message")
-                        .WithMany("Attachments")
-                        .HasForeignKey("MessageId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Message");
-                });
-
             modelBuilder.Entity("Discord.Core.Entities.Privacy.UserPrivacySettings", b =>
                 {
                     b.HasOne("Discord.Core.Entities.User", "User")
@@ -996,8 +938,6 @@ namespace Discord.Infrastructure.Migrations
 
             modelBuilder.Entity("Discord.Core.Entities.Messages.Message", b =>
                 {
-                    b.Navigation("Attachments");
-
                     b.Navigation("Replies");
                 });
 
