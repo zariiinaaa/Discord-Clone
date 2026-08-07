@@ -5,7 +5,9 @@ namespace Discord.Application.Mappings;
 
 public static class ServerMemberMappings
 {
-    public static ServerMemberResponseDto ToResponseDto(this ServerMember member, int ownerId)
+    public static ServerMemberResponseDto ToResponseDto(
+        this ServerMember member,
+        int ownerId)
     {
         return new ServerMemberResponseDto
         {
@@ -20,6 +22,16 @@ public static class ServerMemberMappings
             IsMuted = member.IsMuted,
             IsDeafened = member.IsDeafened,
             TimedOutUntil = member.TimedOutUntil,
+
+            Roles = member.MemberRoles
+                .Select(memberRole =>
+                    memberRole.ServerRole)
+                .OrderByDescending(role =>
+                    role.Position)
+                .Select(role =>
+                    role.ToResponseDto())
+                .ToList(),
+
             JoinedAt = member.CreatedAt
         };
     }

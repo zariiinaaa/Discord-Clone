@@ -8,7 +8,7 @@ namespace Discord.Core.Interfaces
 {
     public interface IAuthService
     {
-        Task<AuthResponseDto> RegisterAsync(
+        Task<AuthOperationResponseDto> RegisterAsync(
        RegisterRequestDto request,
        string? ipAddress,
        CancellationToken cancellationToken = default);
@@ -25,6 +25,24 @@ namespace Discord.Core.Interfaces
 
         Task LogoutAsync(
             RefreshTokenRequestDto request,
+            CancellationToken cancellationToken = default);
+
+        Task<AuthOperationResponseDto> VerifyEmailAsync(
+            VerifyEmailRequestDto request,
+            CancellationToken cancellationToken = default);
+
+        Task<AuthOperationResponseDto> ResendVerificationEmailAsync(
+            ResendVerificationEmailRequestDto request,
+            string? ipAddress,
+            CancellationToken cancellationToken = default);
+
+        Task<AuthOperationResponseDto> ForgotPasswordAsync(
+            ForgotPasswordRequestDto request,
+            string? ipAddress,
+            CancellationToken cancellationToken = default);
+
+        Task<AuthOperationResponseDto> ResetPasswordAsync(
+            ResetPasswordRequestDto request,
             CancellationToken cancellationToken = default);
     }
 }

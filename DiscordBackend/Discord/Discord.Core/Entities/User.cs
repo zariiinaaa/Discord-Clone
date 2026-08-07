@@ -16,6 +16,7 @@ namespace Discord.Core.Entities
         public string Username { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
+        public DateTime? EmailVerifiedAt { get; set; }
         public string PasswordHash { get; set; } = string.Empty;
         public string? AvatarUrl { get; set; }
         public string? Bio { get; set; }
@@ -27,6 +28,7 @@ namespace Discord.Core.Entities
         public string? BanReason { get; set; }
         public DateTime? BannedUntil { get; set; }
         public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
+        public ICollection<AuthOneTimeToken> AuthOneTimeTokens { get; set; } = new List<AuthOneTimeToken>();
         public ICollection<Server> OwnedServers { get; set; }= new List<Server>();
         public ICollection<ServerMember> ServerMemberships { get; set; }= new List<ServerMember>();
         public ICollection<ServerInvite> CreatedServerInvites { get; set; } = new List<ServerInvite>();
@@ -43,5 +45,9 @@ namespace Discord.Core.Entities
         public UserPrivacySettings? PrivacySettings{get;set;}
         public ICollection<DirectMessageRequest>SentDirectMessageRequests { get; set; } = new List<DirectMessageRequest>();
         public ICollection<DirectMessageRequest>ReceivedDirectMessageRequests { get; set; }= new List<DirectMessageRequest>();
+        public ICollection<MessageReaction> MessageReactions { get; set; } = new List<MessageReaction>();
+
+       
+
     }
 }

@@ -379,6 +379,65 @@ public class ConversationsController : ControllerBase
         return NoContent();
     }
 
+    [HttpPut(
+    "{conversationId:int}/messages/{messageId:int}/reactions/{emoji}")]
+    [ProducesResponseType(
+    typeof(MessageResponseDto),
+    StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> AddMessageReaction(
+    int conversationId,
+    int messageId,
+    string emoji,
+    CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+
+        var result = await _messageService.AddConversationReactionAsync(conversationId, messageId,userId,
+        emoji,cancellationToken);
+
+        var reaction = result.Reactions .FirstOrDefault(item =>item.Emoji == emoji);
+
+        var groupName = ChatHub.GetConversationGroupName(conversationId);
+
+        await _chatHubContext.Clients.Group(groupName).ConversationMessageReactionChanged(
+         conversationId,messageId,reaction?.Emoji ?? emoji,reaction?.Count ?? 0,userId,
+         true);
+
+        return Ok(result);
+    }
+
+    [HttpDelete(
+        "{conversationId:int}/messages/{messageId:int}/reactions/{emoji}")]
+    [ProducesResponseType(
+        typeof(MessageResponseDto),
+        StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RemoveMessageReaction(int conversationId,int messageId,string emoji,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+
+        var result =await _messageService.RemoveConversationReactionAsync(conversationId,messageId, userId, emoji,
+           cancellationToken);
+
+        var reaction = result.Reactions.FirstOrDefault(item =>item.Emoji == emoji);
+
+        var groupName =ChatHub.GetConversationGroupName(conversationId);
+
+        await _chatHubContext.Clients.Group(groupName).ConversationMessageReactionChanged(
+       conversationId,messageId,reaction?.Emoji ?? emoji,reaction?.Count ?? 0,
+       userId,false);
+
+        return Ok(result);
+    }
+
     [HttpPut("{conversationId:int}/read")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

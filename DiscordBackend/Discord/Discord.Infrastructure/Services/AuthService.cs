@@ -6,10 +6,13 @@ using Discord.Core.Entities.Privacy;
 using Discord.Core.Enums;
 using Discord.Core.Exceptions;
 using Discord.Core.Interfaces;
+using Discord.Core.Settings;
 using Discord.Infrastructure.Data;
 using FluentValidation;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -20,28 +23,52 @@ namespace Discord.Infrastructure.Services
     {
         private readonly AppDbContext _dbContext;
         private readonly ITokenService _tokenService;
+        private readonly IOneTimeTokenService _oneTimeTokenService;
+        private readonly IEmailService _emailService;
+        private readonly AuthTokenSettings _authTokenSettings;
+        private readonly ILogger<AuthService> _logger;
         private readonly IPasswordHasher<User> _passwordHasher;
         private readonly IValidator<RegisterRequestDto> _registerValidator;
         private readonly IValidator<LoginRequestDto> _loginValidator;
         private readonly IValidator<RefreshTokenRequestDto> _refreshTokenValidator;
+        private readonly IValidator<VerifyEmailRequestDto> _verifyEmailValidator;
+        private readonly IValidator<ResendVerificationEmailRequestDto> _resendVerificationValidator;
+        private readonly IValidator<ForgotPasswordRequestDto> _forgotPasswordValidator;
+        private readonly IValidator<ResetPasswordRequestDto> _resetPasswordValidator;
 
         public AuthService(
             AppDbContext dbContext,
             ITokenService tokenService,
+            IOneTimeTokenService oneTimeTokenService,
+            IEmailService emailService,
             IPasswordHasher<User> passwordHasher,
             IValidator<RegisterRequestDto> registerValidator,
             IValidator<LoginRequestDto> loginValidator,
-            IValidator<RefreshTokenRequestDto> refreshTokenValidator)
+            IValidator<RefreshTokenRequestDto> refreshTokenValidator,
+            IValidator<VerifyEmailRequestDto> verifyEmailValidator,
+            IValidator<ResendVerificationEmailRequestDto> resendVerificationValidator,
+            IValidator<ForgotPasswordRequestDto> forgotPasswordValidator,
+            IValidator<ResetPasswordRequestDto> resetPasswordValidator,
+            IOptions<AuthTokenSettings> authTokenOptions,
+            ILogger<AuthService> logger)
         {
             _dbContext = dbContext;
             _tokenService = tokenService;
+            _oneTimeTokenService = oneTimeTokenService;
+            _emailService = emailService;
             _passwordHasher = passwordHasher;
             _registerValidator = registerValidator;
             _loginValidator = loginValidator;
             _refreshTokenValidator = refreshTokenValidator;
+            _verifyEmailValidator = verifyEmailValidator;
+            _resendVerificationValidator = resendVerificationValidator;
+            _forgotPasswordValidator = forgotPasswordValidator;
+            _resetPasswordValidator = resetPasswordValidator;
+            _authTokenSettings = authTokenOptions.Value;
+            _logger = logger;
         }
 
-        public async Task<AuthResponseDto> RegisterAsync(
+        public async Task<AuthOperationResponseDto> RegisterAsync(
             RegisterRequestDto request,
             string? ipAddress,
             CancellationToken cancellationToken = default)
@@ -81,9 +108,8 @@ namespace Discord.Infrastructure.Services
                 Username = username,
                 DisplayName = request.DisplayName.Trim(),
                 Email = email,
-                Status = UserStatus.Online,
+                Status = UserStatus.Offline,
                 Role = PlatformRole.User,
-                LastSeenAt = DateTime.UtcNow,
 
                 PrivacySettings = new UserPrivacySettings
                 {
@@ -98,12 +124,26 @@ namespace Discord.Infrastructure.Services
 
             _dbContext.Users.Add(user);
 
+            var generatedToken = _oneTimeTokenService.Generate(
+                AuthTokenPurpose.EmailVerification);
+            _dbContext.AuthOneTimeTokens.Add(new AuthOneTimeToken
+            {
+                User = user,
+                Purpose = AuthTokenPurpose.EmailVerification,
+                TokenHash = generatedToken.TokenHash,
+                ExpiresAt = generatedToken.ExpiresAt,
+                CreatedByIp = ipAddress
+            });
+
             await _dbContext.SaveChangesAsync(cancellationToken);
 
-            return await CreateAuthResponseAsync(
-                user,
-                ipAddress,
-                cancellationToken);
+            await _emailService.SendVerificationEmailAsync(
+                user.Email, user.DisplayName, generatedToken.RawToken, cancellationToken);
+
+            return new AuthOperationResponseDto
+            {
+                Message = "Qeydiyyat tamamlandı. Email təsdiq linki göndərildi."
+            };
         }
 
         public async Task<AuthResponseDto> LoginAsync(
@@ -144,6 +184,8 @@ namespace Discord.Infrastructure.Services
                 throw new UnauthorizedException(
                     "Email, username və ya password yanlışdır.");
             }
+
+            EnsureEmailVerified(user);
 
             if (verificationResult ==
                 PasswordVerificationResult.SuccessRehashNeeded)
@@ -194,6 +236,7 @@ namespace Discord.Infrastructure.Services
             }
 
             EnsureUserCanLogin(storedToken.User);
+            EnsureEmailVerified(storedToken.User);
 
             var newRefreshToken =
                 _tokenService.GenerateRefreshToken();
@@ -237,6 +280,198 @@ namespace Discord.Infrastructure.Services
                 ExpiresAt = accessTokenExpiration,
                 User = storedToken.User.ToResponseDto()
             };
+        }
+
+        public async Task<AuthOperationResponseDto> VerifyEmailAsync(
+            VerifyEmailRequestDto request,
+            CancellationToken cancellationToken = default)
+        {
+            await ValidateAsync(_verifyEmailValidator, request, cancellationToken);
+
+            var now = DateTime.UtcNow;
+            var tokenHash = _oneTimeTokenService.HashToken(request.Token);
+            var token = await _dbContext.AuthOneTimeTokens
+                .AsNoTracking()
+                .Include(item => item.User)
+                .FirstOrDefaultAsync(item =>
+                    item.TokenHash == tokenHash &&
+                    item.Purpose == AuthTokenPurpose.EmailVerification,
+                    cancellationToken);
+
+            if (token is null || token.UsedAt.HasValue || token.ExpiresAt <= now ||
+                token.User.EmailVerifiedAt.HasValue)
+            {
+                throw new BadRequestException("Təsdiq tokeni etibarsızdır və ya vaxtı bitib.");
+            }
+
+            await using var transaction = await _dbContext.Database
+                .BeginTransactionAsync(cancellationToken);
+
+            var consumed = await _dbContext.AuthOneTimeTokens
+                .Where(item => item.Id == token.Id && item.UsedAt == null && item.ExpiresAt > now)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.UsedAt, now)
+                    .SetProperty(item => item.UpdatedAt, now), cancellationToken);
+
+            if (consumed != 1)
+            {
+                throw new BadRequestException("Təsdiq tokeni etibarsızdır və ya artıq istifadə olunub.");
+            }
+
+            var user = await _dbContext.Users.FirstAsync(
+                user => user.Id == token.UserId, cancellationToken);
+            if (user.EmailVerifiedAt.HasValue)
+            {
+                throw new BadRequestException("Email artıq təsdiqlənib.");
+            }
+
+            user.EmailVerifiedAt = now;
+            user.UpdatedAt = now;
+
+            await _dbContext.AuthOneTimeTokens
+                .Where(item => item.UserId == user.Id &&
+                    item.Purpose == AuthTokenPurpose.EmailVerification &&
+                    item.UsedAt == null)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.UsedAt, now)
+                    .SetProperty(item => item.UpdatedAt, now), cancellationToken);
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+
+            return new AuthOperationResponseDto { Message = "Email uğurla təsdiqləndi." };
+        }
+
+        public async Task<AuthOperationResponseDto> ResendVerificationEmailAsync(
+            ResendVerificationEmailRequestDto request,
+            string? ipAddress,
+            CancellationToken cancellationToken = default)
+        {
+            await ValidateAsync(_resendVerificationValidator, request, cancellationToken);
+            var genericResponse = new AuthOperationResponseDto
+            {
+                Message = "Uyğun hesab mövcuddursa, təsdiq emaili göndəriləcək."
+            };
+
+            var email = request.Email.Trim().ToLowerInvariant();
+            var user = await _dbContext.Users.FirstOrDefaultAsync(
+                user => user.Email == email, cancellationToken);
+            if (user is null || user.EmailVerifiedAt.HasValue)
+            {
+                return genericResponse;
+            }
+
+            if (await IsInCooldownAsync(user.Id, AuthTokenPurpose.EmailVerification, cancellationToken))
+            {
+                return genericResponse;
+            }
+
+            var generatedToken = await ReplaceTokenAsync(
+                user.Id, AuthTokenPurpose.EmailVerification, ipAddress, cancellationToken);
+
+            try
+            {
+                await _emailService.SendVerificationEmailAsync(
+                    user.Email, user.DisplayName, generatedToken, cancellationToken);
+            }
+            catch (EmailDeliveryException exception)
+            {
+                _logger.LogError(exception, "Verification email delivery failed for UserId {UserId}.", user.Id);
+            }
+
+            return genericResponse;
+        }
+
+        public async Task<AuthOperationResponseDto> ForgotPasswordAsync(
+            ForgotPasswordRequestDto request,
+            string? ipAddress,
+            CancellationToken cancellationToken = default)
+        {
+            await ValidateAsync(_forgotPasswordValidator, request, cancellationToken);
+            var genericResponse = new AuthOperationResponseDto
+            {
+                Message = "Uyğun hesab mövcuddursa, password sıfırlama emaili göndəriləcək."
+            };
+
+            var email = request.Email.Trim().ToLowerInvariant();
+            var user = await _dbContext.Users.FirstOrDefaultAsync(
+                user => user.Email == email, cancellationToken);
+            if (user is null ||
+                await IsInCooldownAsync(user.Id, AuthTokenPurpose.PasswordReset, cancellationToken))
+            {
+                return genericResponse;
+            }
+
+            var generatedToken = await ReplaceTokenAsync(
+                user.Id, AuthTokenPurpose.PasswordReset, ipAddress, cancellationToken);
+
+            try
+            {
+                await _emailService.SendPasswordResetEmailAsync(
+                    user.Email, user.DisplayName, generatedToken, cancellationToken);
+            }
+            catch (EmailDeliveryException exception)
+            {
+                _logger.LogError(exception, "Password reset email delivery failed for UserId {UserId}.", user.Id);
+            }
+
+            return genericResponse;
+        }
+
+        public async Task<AuthOperationResponseDto> ResetPasswordAsync(
+            ResetPasswordRequestDto request,
+            CancellationToken cancellationToken = default)
+        {
+            await ValidateAsync(_resetPasswordValidator, request, cancellationToken);
+
+            var now = DateTime.UtcNow;
+            var tokenHash = _oneTimeTokenService.HashToken(request.Token);
+            var token = await _dbContext.AuthOneTimeTokens.AsNoTracking()
+                .FirstOrDefaultAsync(item =>
+                    item.TokenHash == tokenHash && item.Purpose == AuthTokenPurpose.PasswordReset,
+                    cancellationToken);
+
+            if (token is null || token.UsedAt.HasValue || token.ExpiresAt <= now)
+            {
+                throw new BadRequestException("Password sıfırlama tokeni etibarsızdır və ya vaxtı bitib.");
+            }
+
+            await using var transaction = await _dbContext.Database
+                .BeginTransactionAsync(cancellationToken);
+
+            var consumed = await _dbContext.AuthOneTimeTokens
+                .Where(item => item.Id == token.Id && item.UsedAt == null && item.ExpiresAt > now)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.UsedAt, now)
+                    .SetProperty(item => item.UpdatedAt, now), cancellationToken);
+
+            if (consumed != 1)
+            {
+                throw new BadRequestException("Password sıfırlama tokeni artıq istifadə olunub.");
+            }
+
+            var user = await _dbContext.Users.FirstAsync(
+                user => user.Id == token.UserId, cancellationToken);
+            user.PasswordHash = _passwordHasher.HashPassword(user, request.NewPassword);
+            user.UpdatedAt = now;
+
+            await _dbContext.RefreshTokens
+                .Where(refreshToken => refreshToken.UserId == user.Id && refreshToken.RevokedAt == null)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(refreshToken => refreshToken.RevokedAt, now)
+                    .SetProperty(refreshToken => refreshToken.UpdatedAt, now), cancellationToken);
+
+            await _dbContext.AuthOneTimeTokens
+                .Where(item => item.UserId == user.Id &&
+                    item.Purpose == AuthTokenPurpose.PasswordReset && item.UsedAt == null)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.UsedAt, now)
+                    .SetProperty(item => item.UpdatedAt, now), cancellationToken);
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+
+            return new AuthOperationResponseDto { Message = "Password uğurla yeniləndi." };
         }
 
         public async Task LogoutAsync(
@@ -317,6 +552,57 @@ namespace Discord.Infrastructure.Services
             {
                 throw new ValidationException(
                     validationResult.Errors);
+            }
+        }
+
+        private async Task<bool> IsInCooldownAsync(
+            int userId,
+            AuthTokenPurpose purpose,
+            CancellationToken cancellationToken)
+        {
+            var cooldownStart = DateTime.UtcNow.AddSeconds(-_authTokenSettings.RequestCooldownSeconds);
+            return await _dbContext.AuthOneTimeTokens.AsNoTracking().AnyAsync(
+                token => token.UserId == userId && token.Purpose == purpose &&
+                    token.CreatedAt >= cooldownStart,
+                cancellationToken);
+        }
+
+        private async Task<string> ReplaceTokenAsync(
+            int userId,
+            AuthTokenPurpose purpose,
+            string? ipAddress,
+            CancellationToken cancellationToken)
+        {
+            var now = DateTime.UtcNow;
+            await using var transaction = await _dbContext.Database
+                .BeginTransactionAsync(cancellationToken);
+
+            await _dbContext.AuthOneTimeTokens
+                .Where(token => token.UserId == userId && token.Purpose == purpose && token.UsedAt == null)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(token => token.UsedAt, now)
+                    .SetProperty(token => token.UpdatedAt, now), cancellationToken);
+
+            var generatedToken = _oneTimeTokenService.Generate(purpose);
+            _dbContext.AuthOneTimeTokens.Add(new AuthOneTimeToken
+            {
+                UserId = userId,
+                Purpose = purpose,
+                TokenHash = generatedToken.TokenHash,
+                ExpiresAt = generatedToken.ExpiresAt,
+                CreatedByIp = ipAddress,
+                CreatedAt = now
+            });
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return generatedToken.RawToken;
+        }
+
+        private static void EnsureEmailVerified(User user)
+        {
+            if (!user.EmailVerifiedAt.HasValue)
+            {
+                throw new ForbiddenException("Email ünvanı təsdiqlənməyib.");
             }
         }
 

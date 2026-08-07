@@ -14,6 +14,7 @@ namespace Discord.Core.Entities.Servers
         public ChannelType Type { get; set; }
         public int Position { get; set; }
         public bool IsPrivate { get; set; }
+        public bool IsPermissionSynced { get; set; }
         public int? Bitrate { get; set; }
         public int? UserLimit { get; set; }
         public int ServerId { get; set; }
@@ -22,5 +23,10 @@ namespace Discord.Core.Entities.Servers
         public Channel? ParentCategory { get; set; }
         public ICollection<Channel> ChildChannels { get; set; }= new List<Channel>();
         public ICollection<Message> Messages { get; set; }= new List<Message>();
+        public ICollection<ChannelRolePermissionOverride> RolePermissionOverrides { get; set; }
+            = new List<ChannelRolePermissionOverride>();
+
+        public ICollection<ChannelMemberPermissionOverride> MemberPermissionOverrides { get; set; }
+            = new List<ChannelMemberPermissionOverride>();
     }
 }

@@ -1,4 +1,5 @@
-﻿using Discord.Core.Exceptions;
+﻿using Discord.Core.Enums;
+using Discord.Core.Exceptions;
 using Discord.Core.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
@@ -10,12 +11,19 @@ namespace Discord.Hubs;
 public class VoiceHub : Hub<IVoiceClient>
 {
     private readonly IChannelAccessService _channelAccessService;
-
+    private readonly IChannelPermissionService _channelPermissionService;
+    private readonly IConversationAccessService _conversationAccessService;
     private readonly VoiceConnectionTracker _connectionTracker;
 
-    public VoiceHub(IChannelAccessService channelAccessService,VoiceConnectionTracker connectionTracker)
+    public VoiceHub(
+        IChannelAccessService channelAccessService,
+        IChannelPermissionService channelPermissionService,
+        IConversationAccessService conversationAccessService,
+        VoiceConnectionTracker connectionTracker)
     {
         _channelAccessService = channelAccessService;
+        _channelPermissionService = channelPermissionService;
+        _conversationAccessService = conversationAccessService;
         _connectionTracker = connectionTracker;
     }
 
@@ -23,48 +31,44 @@ public class VoiceHub : Hub<IVoiceClient>
     {
         var userId = GetCurrentUserId();
 
-        await _channelAccessService
-            .GetAccessibleVoiceChannelAsync(
-                channelId,
-                userId,
-                Context.ConnectionAborted);
+        await _channelAccessService.GetAccessibleVoiceChannelAsync(
+            channelId, userId, Context.ConnectionAborted);
 
-        var existingConnection =
-            _connectionTracker.GetConnection(
-                Context.ConnectionId);
+        try
+        {
+            await _channelPermissionService.EnsurePermissionAsync(
+                channelId, userId, ServerPermission.Connect,
+                Context.ConnectionAborted);
+        }
+        catch (ForbiddenException)
+        {
+            throw new HubException(
+                "Bu voice kanalına qoşulmaq icazəniz yoxdur.");
+        }
+
+        var existingConnection = _connectionTracker.GetConnection(
+            Context.ConnectionId);
 
         if (existingConnection is not null)
         {
-            if (existingConnection.ChannelId == channelId)
-            {
-                await BroadcastParticipantsAsync(
-                    channelId);
+            var isSameChannel =
+                existingConnection.ConversationId is null &&
+                existingConnection.ChannelId == channelId;
 
+            if (isSameChannel)
+            {
+                await BroadcastParticipantsAsync(channelId);
                 return;
             }
 
-            _connectionTracker.RemoveConnection(
-                Context.ConnectionId);
-
-            await Groups.RemoveFromGroupAsync(
-                Context.ConnectionId,
-                GetVoiceGroupName(
-                    existingConnection.ChannelId),
-                Context.ConnectionAborted);
-
-            await BroadcastParticipantsAsync(
-                existingConnection.ChannelId);
+            await RemoveFromCurrentRoomAsync(existingConnection);
         }
 
-        var username =
-            Context.User?.FindFirstValue(
-                ClaimTypes.Name)
-            ?? "Unknown";
+        var username = Context.User?.FindFirstValue(
+            ClaimTypes.Name) ?? "Unknown";
 
-        var displayName =
-            Context.User?.FindFirstValue(
-                "display_name")
-            ?? username;
+        var displayName = Context.User?.FindFirstValue(
+            "display_name") ?? username;
 
         await Groups.AddToGroupAsync(
             Context.ConnectionId,
@@ -81,18 +85,94 @@ public class VoiceHub : Hub<IVoiceClient>
         await BroadcastParticipantsAsync(channelId);
     }
 
+    public async Task<bool> CanSpeakInVoiceChannel(int channelId)
+    {
+        var userId = GetCurrentUserId();
+
+        await _channelAccessService.GetAccessibleVoiceChannelAsync(
+            channelId, userId, Context.ConnectionAborted);
+
+        try
+        {
+            await _channelPermissionService.EnsurePermissionAsync(
+                channelId, userId, ServerPermission.Connect,
+                Context.ConnectionAborted);
+        }
+        catch (ForbiddenException)
+        {
+            throw new HubException(
+                "Bu voice kanalına qoşulmaq icazəniz yoxdur.");
+        }
+
+        try
+        {
+            await _channelPermissionService.EnsurePermissionAsync(
+                channelId, userId, ServerPermission.Speak,
+                Context.ConnectionAborted);
+
+            return true;
+        }
+        catch (ForbiddenException)
+        {
+            return false;
+        }
+    }
+
+    public async Task JoinConversationVoice(int conversationId)
+    {
+        var userId = GetCurrentUserId();
+
+        await _conversationAccessService.GetAccessibleConversationAsync(
+            conversationId, userId, Context.ConnectionAborted);
+
+        var existingConnection = _connectionTracker.GetConnection(
+            Context.ConnectionId);
+
+        if (existingConnection is not null)
+        {
+            if (existingConnection.ConversationId == conversationId)
+            {
+                await BroadcastConversationParticipantsAsync(conversationId);
+                return;
+            }
+
+            await RemoveFromCurrentRoomAsync(existingConnection);
+        }
+
+        var username = Context.User?.FindFirstValue(
+            ClaimTypes.Name) ?? "Unknown";
+
+        var displayName = Context.User?.FindFirstValue(
+            "display_name") ?? username;
+
+        await Groups.AddToGroupAsync(
+            Context.ConnectionId,
+            GetConversationVoiceGroupName(conversationId),
+            Context.ConnectionAborted);
+
+        _connectionTracker.AddConversationConnection(
+            Context.ConnectionId,
+            conversationId,
+            userId,
+            username,
+            displayName);
+
+        await BroadcastConversationParticipantsAsync(conversationId);
+    }
+
     public async Task LeaveVoiceChannel(int channelId)
     {
-        var connection =_connectionTracker.GetConnection( Context.ConnectionId);
+        var connection = _connectionTracker.GetConnection(
+            Context.ConnectionId);
 
         if (connection is null ||
+            connection.ConversationId is not null ||
             connection.ChannelId != channelId)
         {
             return;
         }
 
-        _connectionTracker.RemoveConnection(
-            Context.ConnectionId);
+        _connectionTracker.RemoveConnection(Context.ConnectionId);
 
         await Groups.RemoveFromGroupAsync(
             Context.ConnectionId,
@@ -102,59 +182,68 @@ public class VoiceHub : Hub<IVoiceClient>
         await BroadcastParticipantsAsync(channelId);
     }
 
-    public async Task SendWebRtcOffer(string targetConnectionId, string offerJson)
+    public async Task LeaveConversationVoice(int conversationId)
     {
-        EnsureValidSignalPayload(
-            offerJson,
-            "WebRTC offer");
+        var connection = _connectionTracker.GetConnection(
+            Context.ConnectionId);
 
-        EnsureCanSendSignal(targetConnectionId);
+        if (connection is null ||
+            connection.ConversationId != conversationId)
+        {
+            return;
+        }
 
-        await Clients
-            .Client(targetConnectionId)
-            .ReceiveWebRtcOffer(
-                Context.ConnectionId,
-                offerJson);
+        _connectionTracker.RemoveConnection(Context.ConnectionId);
+
+        await Groups.RemoveFromGroupAsync(
+            Context.ConnectionId,
+            GetConversationVoiceGroupName(conversationId),
+            Context.ConnectionAborted);
+
+        await BroadcastConversationParticipantsAsync(conversationId);
     }
 
-    public async Task SendWebRtcAnswer(string targetConnectionId,string answerJson)
+    public async Task SendWebRtcOffer(
+        string targetConnectionId,
+        string offerJson)
     {
-        EnsureValidSignalPayload(
-            answerJson,
-            "WebRTC answer");
-
+        EnsureValidSignalPayload(offerJson, "WebRTC offer");
         EnsureCanSendSignal(targetConnectionId);
 
-        await Clients
-            .Client(targetConnectionId)
-            .ReceiveWebRtcAnswer(
-                Context.ConnectionId,
-                answerJson);
+        await Clients.Client(targetConnectionId).ReceiveWebRtcOffer(
+            Context.ConnectionId, offerJson);
     }
 
-    public async Task SendIceCandidate(string targetConnectionId,string candidateJson)
+    public async Task SendWebRtcAnswer(
+        string targetConnectionId,
+        string answerJson)
     {
-        EnsureValidSignalPayload(
-            candidateJson,
-            "ICE candidate");
-
+        EnsureValidSignalPayload(answerJson, "WebRTC answer");
         EnsureCanSendSignal(targetConnectionId);
 
-        await Clients
-            .Client(targetConnectionId)
-            .ReceiveIceCandidate(
-                Context.ConnectionId,
-                candidateJson);
+        await Clients.Client(targetConnectionId).ReceiveWebRtcAnswer(
+            Context.ConnectionId, answerJson);
+    }
+
+    public async Task SendIceCandidate(
+        string targetConnectionId,
+        string candidateJson)
+    {
+        EnsureValidSignalPayload(candidateJson, "ICE candidate");
+        EnsureCanSendSignal(targetConnectionId);
+
+        await Clients.Client(targetConnectionId).ReceiveIceCandidate(
+            Context.ConnectionId, candidateJson);
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        var connection = _connectionTracker.RemoveConnection(Context.ConnectionId);
+        var connection = _connectionTracker.RemoveConnection(
+            Context.ConnectionId);
 
         if (connection is not null)
         {
-            await BroadcastParticipantsAsync(
-                connection.ChannelId);
+            await BroadcastConnectionRoomAsync(connection);
         }
 
         await base.OnDisconnectedAsync(exception);
@@ -162,41 +251,76 @@ public class VoiceHub : Hub<IVoiceClient>
 
     private void EnsureCanSendSignal(string targetConnectionId)
     {
-        if (string.IsNullOrWhiteSpace(
-            targetConnectionId))
+        if (string.IsNullOrWhiteSpace(targetConnectionId))
         {
-            throw new HubException(
-                "Hədəf bağlantı düzgün deyil.");
+            throw new HubException("Hədəf bağlantı düzgün deyil.");
         }
 
-        if (targetConnectionId ==
-            Context.ConnectionId)
+        if (targetConnectionId == Context.ConnectionId)
         {
             throw new HubException(
                 "İstifadəçi öz bağlantısına siqnal göndərə bilməz.");
         }
 
-        var senderConnection =
-            _connectionTracker.GetConnection(
-                Context.ConnectionId)
+        _ = _connectionTracker.GetConnection(Context.ConnectionId)
             ?? throw new HubException(
-                "Əvvəlcə voice kanalına qoşulmalısınız.");
+                "Əvvəlcə voice otağına qoşulmalısınız.");
 
-        var targetConnection =
-            _connectionTracker.GetConnection(
-                targetConnectionId)
+        _ = _connectionTracker.GetConnection(targetConnectionId)
             ?? throw new HubException(
-                "Hədəf istifadəçi voice kanalında deyil.");
+                "Hədəf istifadəçi voice otağında deyil.");
 
-        if (senderConnection.ChannelId !=
-            targetConnection.ChannelId)
+        if (!_connectionTracker.AreInSameRoom(
+            Context.ConnectionId, targetConnectionId))
         {
             throw new HubException(
-                "İstifadəçilər eyni voice kanalında deyil.");
+                "İstifadəçilər eyni voice otağında deyil.");
         }
     }
 
-    private static void EnsureValidSignalPayload(string payload,string payloadName)
+    private async Task RemoveFromCurrentRoomAsync(
+        VoiceConnectionInfo connection)
+    {
+        _connectionTracker.RemoveConnection(connection.ConnectionId);
+
+        if (connection.ConversationId.HasValue)
+        {
+            var conversationId = connection.ConversationId.Value;
+
+            await Groups.RemoveFromGroupAsync(
+                connection.ConnectionId,
+                GetConversationVoiceGroupName(conversationId),
+                Context.ConnectionAborted);
+
+            await BroadcastConversationParticipantsAsync(conversationId);
+            return;
+        }
+
+        await Groups.RemoveFromGroupAsync(
+            connection.ConnectionId,
+            GetVoiceGroupName(connection.ChannelId),
+            Context.ConnectionAborted);
+
+        await BroadcastParticipantsAsync(connection.ChannelId);
+    }
+
+    private async Task BroadcastConnectionRoomAsync(
+        VoiceConnectionInfo connection)
+    {
+        if (connection.ConversationId.HasValue)
+        {
+            await BroadcastConversationParticipantsAsync(
+                connection.ConversationId.Value);
+
+            return;
+        }
+
+        await BroadcastParticipantsAsync(connection.ChannelId);
+    }
+
+    private static void EnsureValidSignalPayload(
+        string payload,
+        string payloadName)
     {
         if (string.IsNullOrWhiteSpace(payload))
         {
@@ -213,20 +337,30 @@ public class VoiceHub : Hub<IVoiceClient>
 
     private async Task BroadcastParticipantsAsync(int channelId)
     {
-        var participants =_connectionTracker.GetParticipants(channelId);
+        var participants = _connectionTracker.GetParticipants(channelId);
 
-        await Clients
-            .Group(GetVoiceGroupName(channelId))
+        await Clients.Group(GetVoiceGroupName(channelId))
+            .VoiceParticipantsUpdated(channelId, participants);
+    }
+
+    private async Task BroadcastConversationParticipantsAsync(
+        int conversationId)
+    {
+        var participants = _connectionTracker
+            .GetConversationParticipants(conversationId);
+
+        await Clients.Group(GetConversationVoiceGroupName(conversationId))
             .VoiceParticipantsUpdated(
-                channelId,
+                GetConversationRoomId(conversationId),
                 participants);
     }
 
     private int GetCurrentUserId()
     {
-        var userIdValue =Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userIdValue = Context.User?.FindFirstValue(
+            ClaimTypes.NameIdentifier);
 
-        if (!int.TryParse( userIdValue,out var userId))
+        if (!int.TryParse(userIdValue, out var userId))
         {
             throw new HubException("Access token etibarsızdır.");
         }
@@ -234,8 +368,18 @@ public class VoiceHub : Hub<IVoiceClient>
         return userId;
     }
 
+    private static int GetConversationRoomId(int conversationId)
+    {
+        return -conversationId;
+    }
+
     public static string GetVoiceGroupName(int channelId)
     {
         return $"voice:{channelId}";
+    }
+
+    public static string GetConversationVoiceGroupName(int conversationId)
+    {
+        return $"voice-conversation:{conversationId}";
     }
 }

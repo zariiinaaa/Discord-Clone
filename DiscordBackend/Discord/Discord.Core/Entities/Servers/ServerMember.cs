@@ -17,5 +17,8 @@ namespace Discord.Core.Entities.Servers
         public User User { get; set; } = null!;
         public bool? AllowDirectMessages { get; set; }
         public bool? EnableMessageRequests { get; set; }
+        public ICollection<ServerMemberRole> MemberRoles { get; set; } = new List<ServerMemberRole>();
+
     }
+
 }

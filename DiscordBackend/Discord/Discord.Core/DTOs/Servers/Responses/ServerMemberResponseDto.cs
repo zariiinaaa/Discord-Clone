@@ -1,4 +1,5 @@
-﻿using Discord.Core.Enums;
+﻿using Discord.Core.DTOs.ServerRoles.Responses;
+using Discord.Core.Enums;
 
 namespace Discord.Core.DTOs.ServerMembers.Responses;
 
@@ -15,5 +16,6 @@ public class ServerMemberResponseDto
     public bool IsMuted { get; set; }
     public bool IsDeafened { get; set; }
     public DateTime? TimedOutUntil { get; set; }
+    public IReadOnlyCollection<ServerRoleResponseDto> Roles { get; set; }= Array.Empty<ServerRoleResponseDto>();
     public DateTime JoinedAt { get; set; }
 }

@@ -22,6 +22,52 @@ namespace Discord.Infrastructure.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("Discord.Core.Entities.AuthOneTimeToken", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Purpose")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nchar(64)")
+                        .IsFixedLength();
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "Purpose", "CreatedAt");
+
+                    b.ToTable("AuthOneTimeTokens", (string)null);
+                });
+
             modelBuilder.Entity("Discord.Core.Entities.Conversations.Conversation", b =>
                 {
                     b.Property<int>("Id")
@@ -365,6 +411,41 @@ namespace Discord.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Discord.Core.Entities.Messages.MessageReaction", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Emoji")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("MessageId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("MessageId", "UserId", "Emoji")
+                        .IsUnique();
+
+                    b.ToTable("MessageReactions", (string)null);
+                });
+
             modelBuilder.Entity("Discord.Core.Entities.Privacy.UserPrivacySettings", b =>
                 {
                     b.Property<int>("Id")
@@ -460,6 +541,11 @@ namespace Discord.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<bool>("IsPermissionSynced")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
                     b.Property<bool>("IsPrivate")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
@@ -505,6 +591,78 @@ namespace Discord.Infrastructure.Migrations
                     b.HasIndex("ServerId", "ParentCategoryId", "Position");
 
                     b.ToTable("Channels", (string)null);
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Servers.ChannelMemberPermissionOverride", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ChannelId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("OverrideType")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Permission")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("ChannelId", "UserId", "Permission")
+                        .IsUnique();
+
+                    b.ToTable("ChannelMemberPermissionOverrides", (string)null);
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Servers.ChannelRolePermissionOverride", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ChannelId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("OverrideType")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Permission")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RoleId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoleId");
+
+                    b.HasIndex("ChannelId", "RoleId", "Permission")
+                        .IsUnique();
+
+                    b.ToTable("ChannelRolePermissionOverrides", (string)null);
                 });
 
             modelBuilder.Entity("Discord.Core.Entities.Servers.Server", b =>
@@ -553,6 +711,43 @@ namespace Discord.Infrastructure.Migrations
                     b.ToTable("Servers", (string)null);
                 });
 
+            modelBuilder.Entity("Discord.Core.Entities.Servers.ServerBan", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BannedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("ServerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("ServerId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("ServerBans");
+                });
+
             modelBuilder.Entity("Discord.Core.Entities.Servers.ServerInvite", b =>
                 {
                     b.Property<int>("Id")
@@ -560,6 +755,9 @@ namespace Discord.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ChannelId")
+                        .HasColumnType("int");
 
                     b.Property<string>("Code")
                         .IsRequired()
@@ -596,12 +794,14 @@ namespace Discord.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ChannelId");
+
                     b.HasIndex("Code")
                         .IsUnique();
 
                     b.HasIndex("CreatedByUserId");
 
-                    b.HasIndex("ServerId");
+                    b.HasIndex("ServerId", "ChannelId");
 
                     b.ToTable("ServerInvites", (string)null);
                 });
@@ -659,6 +859,119 @@ namespace Discord.Infrastructure.Migrations
                     b.ToTable("ServerMembers", (string)null);
                 });
 
+            modelBuilder.Entity("Discord.Core.Entities.Servers.ServerMemberRole", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("ServerMemberId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ServerRoleId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ServerRoleId");
+
+                    b.HasIndex("ServerMemberId", "ServerRoleId")
+                        .IsUnique();
+
+                    b.ToTable("ServerMemberRoles", (string)null);
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Servers.ServerRole", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ColorHex")
+                        .HasMaxLength(7)
+                        .HasColumnType("nvarchar(7)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDefault")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("IsDisplayedSeparately")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("IsMentionable")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ServerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ServerId")
+                        .IsUnique()
+                        .HasFilter("[IsDefault] = 1");
+
+                    b.HasIndex("ServerId", "Position");
+
+                    b.ToTable("ServerRoles", (string)null);
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Servers.ServerRolePermission", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Permission")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ServerRoleId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ServerRoleId", "Permission")
+                        .IsUnique();
+
+                    b.ToTable("ServerRolePermissions", (string)null);
+                });
+
             modelBuilder.Entity("Discord.Core.Entities.User", b =>
                 {
                     b.Property<int>("Id")
@@ -694,6 +1007,9 @@ namespace Discord.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime?>("EmailVerifiedAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<bool>("IsBanned")
                         .HasColumnType("bit");
@@ -738,6 +1054,17 @@ namespace Discord.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("Users", (string)null);
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.AuthOneTimeToken", b =>
+                {
+                    b.HasOne("Discord.Core.Entities.User", "User")
+                        .WithMany("AuthOneTimeTokens")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Discord.Core.Entities.Conversations.Conversation", b =>
@@ -896,6 +1223,25 @@ namespace Discord.Infrastructure.Migrations
                     b.Navigation("Message");
                 });
 
+            modelBuilder.Entity("Discord.Core.Entities.Messages.MessageReaction", b =>
+                {
+                    b.HasOne("Discord.Core.Entities.Messages.Message", "Message")
+                        .WithMany("Reactions")
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Discord.Core.Entities.User", "User")
+                        .WithMany("MessageReactions")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Message");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Discord.Core.Entities.Privacy.UserPrivacySettings", b =>
                 {
                     b.HasOne("Discord.Core.Entities.User", "User")
@@ -936,6 +1282,44 @@ namespace Discord.Infrastructure.Migrations
                     b.Navigation("Server");
                 });
 
+            modelBuilder.Entity("Discord.Core.Entities.Servers.ChannelMemberPermissionOverride", b =>
+                {
+                    b.HasOne("Discord.Core.Entities.Servers.Channel", "Channel")
+                        .WithMany("MemberPermissionOverrides")
+                        .HasForeignKey("ChannelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Discord.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Channel");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Servers.ChannelRolePermissionOverride", b =>
+                {
+                    b.HasOne("Discord.Core.Entities.Servers.Channel", "Channel")
+                        .WithMany("RolePermissionOverrides")
+                        .HasForeignKey("ChannelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Discord.Core.Entities.Servers.ServerRole", "Role")
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Channel");
+
+                    b.Navigation("Role");
+                });
+
             modelBuilder.Entity("Discord.Core.Entities.Servers.Server", b =>
                 {
                     b.HasOne("Discord.Core.Entities.User", "Owner")
@@ -947,8 +1331,33 @@ namespace Discord.Infrastructure.Migrations
                     b.Navigation("Owner");
                 });
 
+            modelBuilder.Entity("Discord.Core.Entities.Servers.ServerBan", b =>
+                {
+                    b.HasOne("Discord.Core.Entities.Servers.Server", "Server")
+                        .WithMany()
+                        .HasForeignKey("ServerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Discord.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Server");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Discord.Core.Entities.Servers.ServerInvite", b =>
                 {
+                    b.HasOne("Discord.Core.Entities.Servers.Channel", "Channel")
+                        .WithMany()
+                        .HasForeignKey("ChannelId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Discord.Core.Entities.User", "CreatedByUser")
                         .WithMany("CreatedServerInvites")
                         .HasForeignKey("CreatedByUserId")
@@ -960,6 +1369,8 @@ namespace Discord.Infrastructure.Migrations
                         .HasForeignKey("ServerId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Channel");
 
                     b.Navigation("CreatedByUser");
 
@@ -985,6 +1396,47 @@ namespace Discord.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Discord.Core.Entities.Servers.ServerMemberRole", b =>
+                {
+                    b.HasOne("Discord.Core.Entities.Servers.ServerMember", "ServerMember")
+                        .WithMany("MemberRoles")
+                        .HasForeignKey("ServerMemberId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Discord.Core.Entities.Servers.ServerRole", "ServerRole")
+                        .WithMany("MemberRoles")
+                        .HasForeignKey("ServerRoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ServerMember");
+
+                    b.Navigation("ServerRole");
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Servers.ServerRole", b =>
+                {
+                    b.HasOne("Discord.Core.Entities.Servers.Server", "Server")
+                        .WithMany("Roles")
+                        .HasForeignKey("ServerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Server");
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Servers.ServerRolePermission", b =>
+                {
+                    b.HasOne("Discord.Core.Entities.Servers.ServerRole", "ServerRole")
+                        .WithMany("Permissions")
+                        .HasForeignKey("ServerRoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ServerRole");
+                });
+
             modelBuilder.Entity("Discord.Core.Entities.Conversations.Conversation", b =>
                 {
                     b.Navigation("Members");
@@ -998,6 +1450,8 @@ namespace Discord.Infrastructure.Migrations
                 {
                     b.Navigation("Attachments");
 
+                    b.Navigation("Reactions");
+
                     b.Navigation("Replies");
                 });
 
@@ -1005,7 +1459,11 @@ namespace Discord.Infrastructure.Migrations
                 {
                     b.Navigation("ChildChannels");
 
+                    b.Navigation("MemberPermissionOverrides");
+
                     b.Navigation("Messages");
+
+                    b.Navigation("RolePermissionOverrides");
                 });
 
             modelBuilder.Entity("Discord.Core.Entities.Servers.Server", b =>
@@ -1015,10 +1473,26 @@ namespace Discord.Infrastructure.Migrations
                     b.Navigation("Invites");
 
                     b.Navigation("Members");
+
+                    b.Navigation("Roles");
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Servers.ServerMember", b =>
+                {
+                    b.Navigation("MemberRoles");
+                });
+
+            modelBuilder.Entity("Discord.Core.Entities.Servers.ServerRole", b =>
+                {
+                    b.Navigation("MemberRoles");
+
+                    b.Navigation("Permissions");
                 });
 
             modelBuilder.Entity("Discord.Core.Entities.User", b =>
                 {
+                    b.Navigation("AuthOneTimeTokens");
+
                     b.Navigation("BlockedByUsers");
 
                     b.Navigation("BlockedUsers");
@@ -1030,6 +1504,8 @@ namespace Discord.Infrastructure.Migrations
                     b.Navigation("FriendshipsAsFriend");
 
                     b.Navigation("FriendshipsAsUser");
+
+                    b.Navigation("MessageReactions");
 
                     b.Navigation("OwnedConversations");
 

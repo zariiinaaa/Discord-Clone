@@ -5,8 +5,7 @@ namespace Discord.Application.Mappings;
 
 public static class MessageMappings
 {
-    public static MessageResponseDto ToResponseDto(
-        this Message message)
+    public static MessageResponseDto ToResponseDto(this Message message,int? currentUserId = null)
     {
         return new MessageResponseDto
         {
@@ -34,6 +33,23 @@ public static class MessageMappings
                         ContentType = attachment.ContentType,
                         FileSize = attachment.FileSize
                     })
+                .ToArray(),
+
+            Reactions = message.Reactions
+                .GroupBy(reaction => reaction.Emoji)
+                .Select(group =>
+                    new MessageReactionResponseDto
+                    {
+                        Emoji = group.Key,
+                        Count = group.Count(),
+
+                        HasReacted =
+                            currentUserId.HasValue &&
+                            group.Any(reaction =>
+                                reaction.UserId ==
+                                currentUserId.Value)
+                    })
+                .OrderBy(reaction => reaction.Emoji)
                 .ToArray()
         };
     }

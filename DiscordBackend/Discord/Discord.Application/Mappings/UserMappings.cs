@@ -15,6 +15,8 @@ public static class UserMappings
             Username = user.Username,
             DisplayName = user.DisplayName,
             Email = user.Email,
+            IsEmailVerified = user.EmailVerifiedAt.HasValue,
+            EmailVerifiedAt = user.EmailVerifiedAt,
             AvatarUrl = user.AvatarUrl,
             Bio = user.Bio,
             Status = user.Status,

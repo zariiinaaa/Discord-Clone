@@ -10,10 +10,12 @@ namespace Discord.Infrastructure.Services;
 public class ChannelAccessService : IChannelAccessService
 {
     private readonly AppDbContext _dbContext;
+    private readonly IChannelPermissionService _channelPermissionService;
 
-    public ChannelAccessService(AppDbContext dbContext)
+    public ChannelAccessService(AppDbContext dbContext, IChannelPermissionService channelPermissionService)
     {
         _dbContext = dbContext;
+        _channelPermissionService = channelPermissionService;
     }
 
     public Task<Channel> GetAccessibleTextChannelAsync(int channelId,int userId,
@@ -64,8 +66,16 @@ public class ChannelAccessService : IChannelAccessService
 
         if (!isMember)
         {
-            throw new ForbiddenException( "Yalnız server üzvləri kanala daxil ola bilər.");
+            throw new ForbiddenException(
+                "Yalnız server üzvləri kanala daxil ola bilər.");
         }
+
+        await _channelPermissionService
+            .EnsurePermissionAsync(
+                channelId,
+                userId,
+                ServerPermission.ViewChannels,
+                cancellationToken);
 
         return channel;
     }

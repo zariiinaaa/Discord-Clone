@@ -25,29 +25,36 @@ public class MessageService : IMessageService
 
     private readonly IChannelAccessService _channelAccessService;
     private readonly IConversationAccessService _conversationAccessService;
+    private readonly IChannelPermissionService _channelPermissionService;
 
     public MessageService(AppDbContext dbContext,IValidator<CreateMessageRequestDto>createMessageValidator,
     IValidator<UpdateMessageRequestDto>updateMessageValidator,IChannelAccessService channelAccessService,
-    IConversationAccessService conversationAccessService)
+    IConversationAccessService conversationAccessService, IChannelPermissionService channelPermissionService)
     {
         _dbContext = dbContext;
         _createMessageValidator = createMessageValidator;
         _updateMessageValidator =updateMessageValidator;
         _channelAccessService =channelAccessService;
         _conversationAccessService =conversationAccessService;
+        _channelPermissionService = channelPermissionService;
     }
 
-    public async Task<
-        IReadOnlyCollection<MessageResponseDto>>
-        GetChannelMessagesAsync(
-            int channelId,
-            int userId,
-            int? beforeMessageId = null,
-            int limit = 50,
-            CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyCollection<MessageResponseDto>>GetChannelMessagesAsync(int channelId,
+     int userId, int? beforeMessageId = null,int limit = 50,
+      CancellationToken cancellationToken = default)
     {
-        await _channelAccessService.GetAccessibleTextChannelAsync(channelId,userId,
-            cancellationToken);
+        await _channelAccessService
+     .GetAccessibleTextChannelAsync(
+         channelId,
+         userId,
+         cancellationToken);
+
+        await _channelPermissionService
+            .EnsurePermissionAsync(
+                channelId,
+                userId,
+                ServerPermission.ReadMessageHistory,
+                cancellationToken);
 
         if (limit is < 1 or > 100)
         {
@@ -60,17 +67,15 @@ public class MessageService : IMessageService
             throw new BadRequestException("Mesaj ID-si düzgün deyil.");
         }
 
-        var query = _dbContext.Messages
-     .AsNoTracking()
-     .Include(message => message.Author)
-     .Include(message => message.Attachments)
-     .Where(message =>
-         message.ChannelId == channelId);
+        var query = _dbContext.Messages.AsNoTracking().AsSplitQuery().Include(message => message.Author)
+    .Include(message => message.Attachments)
+    .Include(message => message.Reactions)
+    .Where(message =>
+        message.ChannelId == channelId);
 
         if (beforeMessageId.HasValue)
         {
-            query = query.Where(message =>
-                message.Id < beforeMessageId.Value);
+            query = query.Where(message => message.Id < beforeMessageId.Value);
         }
 
         var messages = await query
@@ -80,20 +85,13 @@ public class MessageService : IMessageService
 
         messages.Reverse();
 
-        return messages
-            .Select(message => message.ToResponseDto())
-            .ToList();
+        return messages.Select(message =>message.ToResponseDto(userId)).ToList();
     }
 
 
-    public async Task<
-    IReadOnlyCollection<MessageResponseDto>>
-    GetConversationMessagesAsync(
-        int conversationId,
-        int userId,
-        int? beforeMessageId = null,
-        int limit = 50,
-        CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyCollection<MessageResponseDto>>GetConversationMessagesAsync(int conversationId,
+    int userId,int? beforeMessageId = null,int limit = 50,
+    CancellationToken cancellationToken = default)
     {
         await _conversationAccessService
             .GetAccessibleConversationAsync(
@@ -114,12 +112,11 @@ public class MessageService : IMessageService
                 "Mesaj ID-si düzgün deyil.");
         }
 
-        var query = _dbContext.Messages
-      .AsNoTracking()
-      .Include(message => message.Author)
-      .Include(message => message.Attachments)
-      .Where(message =>
-          message.ConversationId == conversationId);
+        var query = _dbContext.Messages.AsNoTracking().AsSplitQuery().Include(message => message.Author)
+     .Include(message => message.Attachments)
+     .Include(message => message.Reactions)
+     .Where(message =>
+         message.ConversationId == conversationId);
 
         if (beforeMessageId.HasValue)
         {
@@ -136,10 +133,7 @@ public class MessageService : IMessageService
 
         messages.Reverse();
 
-        return messages
-            .Select(message =>
-                message.ToResponseDto())
-            .ToList();
+        return messages.Select(message =>message.ToResponseDto(userId)).ToList();
     }
 
 
@@ -226,7 +220,16 @@ public class MessageService : IMessageService
                     .IsVisibleInList = true;
             }
         }
+        var trackedConversation =
+    await _dbContext.Conversations
+        .FirstAsync(
+            conversation =>
+                conversation.Id ==
+                conversationId,
+            cancellationToken);
 
+        trackedConversation.UpdatedAt =
+            DateTime.UtcNow;
         var message = new Message
         {
             Content = normalizedContent,
@@ -279,7 +282,28 @@ public class MessageService : IMessageService
                 "Mesaj mətni və ya ən azı bir attachment olmalıdır.");
         }
 
-        await _channelAccessService.GetAccessibleTextChannelAsync(channelId,userId,cancellationToken);
+        await _channelAccessService
+    .GetAccessibleTextChannelAsync(
+        channelId,
+        userId,
+        cancellationToken);
+
+        await _channelPermissionService
+            .EnsurePermissionAsync(
+                channelId,
+                userId,
+                ServerPermission.SendMessages,
+                cancellationToken);
+
+        if (attachments.Count > 0)
+        {
+            await _channelPermissionService
+                .EnsurePermissionAsync(
+                    channelId,
+                    userId,
+                    ServerPermission.AttachFiles,
+                    cancellationToken);
+        }
 
         if (request.ReplyToMessageId.HasValue)
         {
@@ -383,7 +407,11 @@ public class MessageService : IMessageService
     public async Task DeleteAsync(int channelId,int messageId, int userId,
         CancellationToken cancellationToken = default)
     {
-        var channel = await _channelAccessService.GetAccessibleTextChannelAsync(channelId,userId,cancellationToken);
+         await _channelAccessService
+    .GetAccessibleTextChannelAsync(
+        channelId,
+        userId,
+        cancellationToken);
 
         var message = await _dbContext.Messages
             .FirstOrDefaultAsync(
@@ -394,13 +422,14 @@ public class MessageService : IMessageService
             ?? throw new KeyNotFoundException(
                 "Mesaj tapılmadı.");
 
-        var canDelete =
-            message.AuthorId == userId ||
-            channel.Server.OwnerId == userId;
-
-        if (!canDelete)
+        if (message.AuthorId != userId)
         {
-            throw new ForbiddenException( "Bu mesajı silmək icazəniz yoxdur.");
+            await _channelPermissionService
+                .EnsurePermissionAsync(
+                    channelId,
+                    userId,
+                    ServerPermission.ManageMessages,
+                    cancellationToken);
         }
 
         await using var transaction =
@@ -543,6 +572,190 @@ public class MessageService : IMessageService
 
         await transaction.CommitAsync(
             cancellationToken);
+    }
+
+    public Task<MessageResponseDto> AddChannelReactionAsync(
+    int channelId,
+    int messageId,
+    int userId,
+    string emoji,
+    CancellationToken cancellationToken = default)
+    {
+        return ChangeReactionAsync(
+            messageId,
+            userId,
+            emoji,
+            channelId,
+            conversationId: null,
+            shouldAdd: true,
+            cancellationToken);
+    }
+
+    public Task<MessageResponseDto> RemoveChannelReactionAsync(
+        int channelId,
+        int messageId,
+        int userId,
+        string emoji,
+        CancellationToken cancellationToken = default)
+    {
+        return ChangeReactionAsync(
+            messageId,
+            userId,
+            emoji,
+            channelId,
+            conversationId: null,
+            shouldAdd: false,
+            cancellationToken);
+    }
+
+    public Task<MessageResponseDto> AddConversationReactionAsync(
+        int conversationId,
+        int messageId,
+        int userId,
+        string emoji,
+        CancellationToken cancellationToken = default)
+    {
+        return ChangeReactionAsync(
+            messageId,
+            userId,
+            emoji,
+            channelId: null,
+            conversationId,
+            shouldAdd: true,
+            cancellationToken);
+    }
+
+    public Task<MessageResponseDto> RemoveConversationReactionAsync(
+        int conversationId,
+        int messageId,
+        int userId,
+        string emoji,
+        CancellationToken cancellationToken = default)
+    {
+        return ChangeReactionAsync(
+            messageId,
+            userId,
+            emoji,
+            channelId: null,
+            conversationId,
+            shouldAdd: false,
+            cancellationToken);
+    }
+
+    private async Task<MessageResponseDto> ChangeReactionAsync(
+        int messageId,
+        int userId,
+        string emoji,
+        int? channelId,
+        int? conversationId,
+        bool shouldAdd,
+        CancellationToken cancellationToken)
+    {
+        var normalizedEmoji = emoji?.Trim();
+
+        if (string.IsNullOrWhiteSpace(normalizedEmoji))
+        {
+            throw new BadRequestException(
+                "Emoji boş ola bilməz.");
+        }
+
+        if (normalizedEmoji.Length > 100)
+        {
+            throw new BadRequestException(
+                "Emoji maksimum 100 simvol ola bilər.");
+        }
+        if (channelId.HasValue)
+        {
+            await _channelAccessService
+                .GetAccessibleTextChannelAsync(
+                    channelId.Value,
+                    userId,
+                    cancellationToken);
+
+            if (shouldAdd)
+            {
+                await _channelPermissionService
+                    .EnsurePermissionAsync(
+                        channelId.Value,
+                        userId,
+                        ServerPermission.AddReactions,
+                        cancellationToken);
+            }
+        
+    }
+        else if (conversationId.HasValue)
+        {
+            await _conversationAccessService
+                .GetAccessibleConversationAsync(
+                    conversationId.Value,
+                    userId,
+                    cancellationToken);
+        }
+        else
+        {
+            throw new BadRequestException(
+                "Mesajın yerləşdiyi hissə müəyyən edilmədi.");
+        }
+
+        var query = _dbContext.Messages
+            .AsSplitQuery()
+            .Include(message => message.Author)
+            .Include(message => message.Attachments)
+            .Include(message => message.Reactions)
+            .Where(message =>
+                message.Id == messageId);
+
+        if (channelId.HasValue)
+        {
+            query = query.Where(message =>
+                message.ChannelId == channelId.Value);
+        }
+        else
+        {
+            query = query.Where(message =>
+                message.ConversationId ==
+                conversationId!.Value);
+        }
+
+        var message = await query
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? throw new KeyNotFoundException(
+                "Mesaj tapılmadı.");
+
+        var existingReaction =
+            message.Reactions.FirstOrDefault(
+                reaction =>
+                    reaction.UserId == userId &&
+                    reaction.Emoji == normalizedEmoji);
+
+        if (shouldAdd)
+        {
+            if (existingReaction is null)
+            {
+                message.Reactions.Add(
+                    new MessageReaction
+                    {
+                        UserId = userId,
+                        Emoji = normalizedEmoji
+                    });
+
+                await _dbContext.SaveChangesAsync(
+                    cancellationToken);
+            }
+        }
+        else if (existingReaction is not null)
+        {
+            message.Reactions.Remove(
+                existingReaction);
+
+            _dbContext.MessageReactions.Remove(
+                existingReaction);
+
+            await _dbContext.SaveChangesAsync(
+                cancellationToken);
+        }
+
+        return message.ToResponseDto(userId);
     }
 
     private async Task PrepareDirectMessageRequestAsync(

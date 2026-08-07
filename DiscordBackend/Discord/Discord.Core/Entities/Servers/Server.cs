@@ -18,5 +18,6 @@ namespace Discord.Core.Entities.Servers
         public ICollection<Channel> Channels { get; set; }= new List<Channel>();
 
         public ICollection<ServerInvite> Invites { get; set; }=new List<ServerInvite>();
+        public ICollection<ServerRole> Roles { get; set; }= new List<ServerRole>();
     }
 }

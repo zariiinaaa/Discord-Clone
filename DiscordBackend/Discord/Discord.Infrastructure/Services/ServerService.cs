@@ -14,16 +14,17 @@ namespace Discord.Infrastructure.Services;
 public class ServerService : IServerService
 {
     private readonly AppDbContext _dbContext;
-    private readonly IValidator<CreateServerRequestDto>
-        _createServerValidator;
-    private readonly IValidator<UpdateServerRequestDto>
-    _updateServerValidator;
+    private readonly IValidator<CreateServerRequestDto> _createServerValidator;
+    private readonly IValidator<UpdateServerRequestDto> _updateServerValidator;
+    private readonly IServerPermissionService _serverPermissionService;
 
-    public ServerService(AppDbContext dbContext,IValidator<CreateServerRequestDto> createServerValidator,IValidator<UpdateServerRequestDto> updateServerValidator)
+    public ServerService(AppDbContext dbContext,IValidator<CreateServerRequestDto> createServerValidator,IValidator<UpdateServerRequestDto> updateServerValidator,
+        IServerPermissionService serverPermissionService)
     {
         _dbContext = dbContext;
         _createServerValidator = createServerValidator;
         _updateServerValidator = updateServerValidator;
+        _serverPermissionService = serverPermissionService;
     }
 
     public async Task<ServerResponseDto> CreateAsync(int ownerId,CreateServerRequestDto request,CancellationToken cancellationToken = default)
@@ -71,6 +72,8 @@ public class ServerService : IServerService
             UserId = ownerId,
             Server = server
         };
+        var everyoneRole = CreateEveryoneRole(server);
+
 
         var generalCategory = new Channel
         {
@@ -101,6 +104,7 @@ public class ServerService : IServerService
         };
 
         server.Members.Add(ownerMember);
+        server.Roles.Add(everyoneRole);
 
         server.Channels.Add(generalCategory);
         server.Channels.Add(generalTextChannel);
@@ -160,9 +164,7 @@ public class ServerService : IServerService
         return server.ToDetailsResponseDto();
     }
 
-    public async Task<ServerResponseDto> UpdateAsync(
-    int serverId,
-    int userId,
+    public async Task<ServerResponseDto> UpdateAsync(int serverId, int userId,
     UpdateServerRequestDto request,
     CancellationToken cancellationToken = default)
     {
@@ -184,17 +186,16 @@ public class ServerService : IServerService
             ?? throw new KeyNotFoundException(
                 "Server tapılmadı.");
 
-        if (server.OwnerId != userId)
-        {
-            throw new ForbiddenException(
-                "Yalnız server sahibi bu məlumatları dəyişə bilər.");
-        }
+        await _serverPermissionService
+      .EnsurePermissionAsync(
+          serverId,
+          userId,
+          ServerPermission.ManageServer,
+          cancellationToken);
 
         server.Name = request.Name.Trim();
 
-        server.Description =
-            string.IsNullOrWhiteSpace(request.Description)
-                ? null
+        server.Description =string.IsNullOrWhiteSpace(request.Description) ? null
                 : request.Description.Trim();
 
         server.IsPublic = request.IsPublic;
@@ -212,10 +213,8 @@ public class ServerService : IServerService
     {
         var server = await _dbContext.Servers
             .FirstOrDefaultAsync(
-                server => server.Id == serverId,
-                cancellationToken)
-            ?? throw new KeyNotFoundException(
-                "Server tapılmadı.");
+                server => server.Id == serverId,cancellationToken)
+            ?? throw new KeyNotFoundException( "Server tapılmadı.");
 
         if (server.OwnerId != userId)
         {
@@ -234,24 +233,90 @@ public class ServerService : IServerService
     CancellationToken cancellationToken = default)
     {
         var server = await _dbContext.Servers
-            .FirstOrDefaultAsync(
-                server => server.Id == serverId,
-                cancellationToken)
-            ?? throw new KeyNotFoundException(
-                "Server tapılmadı.");
+            .FirstOrDefaultAsync(server => server.Id == serverId,
+                cancellationToken)?? throw new KeyNotFoundException("Server tapılmadı.");
 
-        if (server.OwnerId != userId)
-        {
-            throw new ForbiddenException(
-                "Yalnız server sahibi server iconunu dəyişə bilər.");
-        }
+        await _serverPermissionService
+     .EnsurePermissionAsync(
+         serverId,
+         userId,
+         ServerPermission.ManageServer,
+         cancellationToken);
 
         server.IconUrl = iconUrl;
         server.UpdatedAt = DateTime.UtcNow;
 
-        await _dbContext.SaveChangesAsync(
-            cancellationToken);
+        await _dbContext.SaveChangesAsync(cancellationToken);
 
         return server.ToResponseDto();
+    }
+
+    private static ServerRole CreateEveryoneRole(Server server)
+    {
+        var everyoneRole = new ServerRole
+        {
+            Name = "@everyone",
+            ColorHex = null,
+            Position = 0,
+            IsDefault = true,
+            IsDisplayedSeparately = false,
+            IsMentionable = false,
+            Server = server
+        };
+
+        everyoneRole.Permissions.Add(new ServerRolePermission
+            {
+                Permission =ServerPermission.ViewChannels
+            });
+
+        everyoneRole.Permissions.Add(
+            new ServerRolePermission
+            {
+                Permission = ServerPermission.CreateInvites
+            });
+
+        everyoneRole.Permissions.Add(
+            new ServerRolePermission
+            {
+                Permission =ServerPermission.ChangeNickname
+            });
+
+        everyoneRole.Permissions.Add(new ServerRolePermission
+            {
+                Permission = ServerPermission.SendMessages
+            });
+
+        everyoneRole.Permissions.Add(new ServerRolePermission
+            {
+                Permission = ServerPermission.ReadMessageHistory
+            });
+
+        everyoneRole.Permissions.Add(new ServerRolePermission
+            {
+                Permission = ServerPermission.AddReactions
+            });
+
+        everyoneRole.Permissions.Add( new ServerRolePermission
+            {
+                Permission =ServerPermission.EmbedLinks
+            });
+
+        everyoneRole.Permissions.Add(new ServerRolePermission
+            {
+                Permission = ServerPermission.AttachFiles
+            });
+
+        everyoneRole.Permissions.Add( new ServerRolePermission
+            {
+                Permission =
+                    ServerPermission.Connect
+            });
+
+        everyoneRole.Permissions.Add( new ServerRolePermission
+            {
+                Permission =ServerPermission.Speak
+            });
+
+        return everyoneRole;
     }
 }

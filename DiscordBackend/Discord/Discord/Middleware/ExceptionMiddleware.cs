@@ -51,6 +51,9 @@ public class ExceptionMiddleware
             ConflictException =>
                 (StatusCodes.Status409Conflict,"Məlumat konflikti"),
 
+            EmailDeliveryException =>
+                (StatusCodes.Status503ServiceUnavailable,"Email xidməti əlçatan deyil"),
+
             KeyNotFoundException =>
                 (StatusCodes.Status404NotFound,"Məlumat tapılmadı"),
 

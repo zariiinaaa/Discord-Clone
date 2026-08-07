@@ -13,10 +13,10 @@ namespace Discord.Infrastructure.Data
 {
     public class AppDbContext: DbContext
     {
-
         public AppDbContext(DbContextOptions<AppDbContext> options): base(options) { }
         public DbSet<User> Users => Set<User>();
         public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+        public DbSet<AuthOneTimeToken> AuthOneTimeTokens => Set<AuthOneTimeToken>();
         public DbSet<Server> Servers => Set<Server>();
         public DbSet<ServerMember> ServerMembers =>Set<ServerMember>();
        public DbSet<Channel> Channels => Set<Channel>();
@@ -29,8 +29,18 @@ namespace Discord.Infrastructure.Data
         public DbSet<ConversationMember> ConversationMembers=> Set<ConversationMember>();
         public DbSet<UserPrivacySettings>UserPrivacySettings =>Set<UserPrivacySettings>();
         public DbSet<DirectMessageRequest>DirectMessageRequests =>Set<DirectMessageRequest>();
-
         public DbSet<MessageAttachment> MessageAttachments { get; set; }= null!;
+        public DbSet<MessageReaction> MessageReactions =>Set<MessageReaction>();
+        public DbSet<ServerRole> ServerRoles =>Set<ServerRole>();
+        public DbSet<ServerRolePermission> ServerRolePermissions =>Set<ServerRolePermission>();
+
+        public DbSet<ServerMemberRole> ServerMemberRoles =>Set<ServerMemberRole>();
+        public DbSet<ChannelRolePermissionOverride> ChannelRolePermissionOverrides
+                => Set<ChannelRolePermissionOverride>();
+
+        public DbSet<ChannelMemberPermissionOverride> ChannelMemberPermissionOverrides
+                    => Set<ChannelMemberPermissionOverride>();
+        public DbSet<ServerBan> ServerBans => Set<ServerBan>();
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);

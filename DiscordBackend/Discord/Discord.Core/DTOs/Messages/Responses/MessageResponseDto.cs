@@ -21,4 +21,6 @@ public class MessageResponseDto
     public int? ConversationId { get; set; }
     public IReadOnlyCollection<MessageAttachmentResponseDto> Attachments { get; set; }
     = Array.Empty<MessageAttachmentResponseDto>();
+    public IReadOnlyCollection<MessageReactionResponseDto> Reactions { get; set; }
+    = Array.Empty<MessageReactionResponseDto>();
 }

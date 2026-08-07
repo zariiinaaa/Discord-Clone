@@ -31,7 +31,8 @@ namespace Discord.Infrastructure.Data.Configurations
 
             builder.Property(channel => channel.IsPrivate)
                 .HasDefaultValue(false);
-
+            builder.Property(channel => channel.IsPermissionSynced)
+    .HasDefaultValue(false);
             builder.HasIndex(channel => channel.ServerId);
 
             builder.HasIndex(channel => new

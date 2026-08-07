@@ -146,6 +146,59 @@ public class MessagesController : ControllerBase
         return NoContent();
     }
 
+    [HttpPut("{messageId:int}/reactions/{emoji}")]
+    [ProducesResponseType(
+     typeof(MessageResponseDto),
+     StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> AddReaction( int channelId,int messageId,
+     string emoji,CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+
+        var result =await _messageService.AddChannelReactionAsync(channelId, messageId,
+         userId,emoji,cancellationToken);
+
+        var reaction = result.Reactions.FirstOrDefault(item =>item.Emoji == emoji);
+
+        await _chatHubContext.Clients.Group(ChatHub.GetChannelGroupName(channelId)).MessageReactionChanged(channelId,
+        messageId, reaction?.Emoji ?? emoji,reaction?.Count ?? 0,userId,true);
+
+        return Ok(result);
+    }
+
+    [HttpDelete("{messageId:int}/reactions/{emoji}")]
+    [ProducesResponseType(
+        typeof(MessageResponseDto),
+        StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RemoveReaction(int channelId,int messageId,string emoji,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+
+        var result =await _messageService.RemoveChannelReactionAsync(channelId,messageId,userId,
+        emoji, cancellationToken);
+
+        var reaction = result.Reactions
+            .FirstOrDefault(item =>
+                item.Emoji == emoji);
+
+        await _chatHubContext.Clients.Group(
+                ChatHub.GetChannelGroupName(channelId))
+            .MessageReactionChanged(channelId,messageId,reaction?.Emoji ?? emoji,reaction?.Count ?? 0,
+                userId,
+                false);
+
+        return Ok(result);
+    }
+
     private int GetCurrentUserId()
     {
         var userIdValue =User.FindFirstValue(ClaimTypes.NameIdentifier);

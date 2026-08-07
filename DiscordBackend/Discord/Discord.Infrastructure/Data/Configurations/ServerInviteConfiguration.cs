@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Discord.Infrastructure.Data.Configurations;
 
-public class ServerInviteConfiguration: IEntityTypeConfiguration<ServerInvite>
+public class ServerInviteConfiguration : IEntityTypeConfiguration<ServerInvite>
 {
     public void Configure(EntityTypeBuilder<ServerInvite> builder)
     {
@@ -19,6 +19,12 @@ public class ServerInviteConfiguration: IEntityTypeConfiguration<ServerInvite>
         builder.HasIndex(invite => invite.Code)
             .IsUnique();
 
+        builder.HasIndex(invite => new
+        {
+            invite.ServerId,
+            invite.ChannelId
+        });
+
         builder.Property(invite => invite.Uses)
             .HasDefaultValue(0);
 
@@ -29,6 +35,11 @@ public class ServerInviteConfiguration: IEntityTypeConfiguration<ServerInvite>
             .WithMany(server => server.Invites)
             .HasForeignKey(invite => invite.ServerId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(invite => invite.Channel)
+            .WithMany()
+            .HasForeignKey(invite => invite.ChannelId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(invite => invite.CreatedByUser)
             .WithMany(user => user.CreatedServerInvites)

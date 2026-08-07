@@ -11,6 +11,8 @@ public class ServerInvite : BaseEntity
     public bool IsRevoked { get; set; }
     public int ServerId { get; set; }
     public Server Server { get; set; } = null!;
+    public int ChannelId { get; set; }
+    public Channel Channel { get; set; } = null!;
     public int CreatedByUserId { get; set; }
     public User CreatedByUser { get; set; } = null!;
 }
