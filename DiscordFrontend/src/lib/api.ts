@@ -11,6 +11,25 @@ interface ApiErrorResponse {
   status?: number;
 }
 
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+    public readonly title?: string,
+    public readonly detail?: string
+  ) {
+    super(message);
+
+    this.name = "ApiError";
+  }
+}
+
+export function isApiError(
+  error: unknown
+): error is ApiError {
+  return error instanceof ApiError;
+}
+
 let refreshPromise: Promise<string> | null = null;
 
 async function refreshAccessToken(): Promise<string> {
@@ -129,11 +148,17 @@ export async function apiRequest<T>(
         .catch(() => null)) as
         ApiErrorResponse | null;
 
-    throw new Error(
-      errorResponse?.detail ??
-        errorResponse?.title ??
-        `API sorğusu uğursuz oldu: ${response.status}`
-    );
+   const errorMessage =
+  errorResponse?.detail ??
+  errorResponse?.title ??
+  `API sorğusu uğursuz oldu: ${response.status}`;
+
+throw new ApiError(
+  response.status,
+  errorMessage,
+  errorResponse?.title,
+  errorResponse?.detail
+);
   }
 
   if (response.status === 204) {

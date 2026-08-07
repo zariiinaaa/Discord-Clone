@@ -38,13 +38,19 @@ type VoiceConnectionStatus =
 
 interface VoiceContextValue {
   activeChannelId: number | null;
+  activeConversationId: number | null;
   participants: VoiceParticipant[];
   status: VoiceConnectionStatus;
   hasMicrophone: boolean;
+  canSpeak: boolean;
   isMuted: boolean;
 
   joinVoiceChannel: (
     channelId: number
+  ) => Promise<void>;
+
+  joinConversationVoice: (
+    conversationId: number
   ) => Promise<void>;
 
   leaveVoiceChannel: () => Promise<void>;
@@ -77,6 +83,28 @@ function getMicrophoneErrorMessage(
   return "Mikrofona qoşulmaq alınmadı.";
 }
 
+function getVoiceHubErrorMessage(
+  error: unknown
+): string {
+  if (!(error instanceof Error)) {
+    return "Voice kanalına qoşulmaq alınmadı.";
+  }
+
+  const marker = "HubException:";
+  const markerIndex =
+    error.message.indexOf(marker);
+
+  if (markerIndex !== -1) {
+    return error.message
+      .slice(
+        markerIndex + marker.length
+      )
+      .trim();
+  }
+
+  return error.message;
+}
+
 export function VoiceProvider({
   children,
 }: PropsWithChildren) {
@@ -87,8 +115,13 @@ export function VoiceProvider({
   const connectionRef =
     useRef<HubConnection | null>(null);
 
-  const activeChannelIdRef =
-    useRef<number | null>(null);
+ const activeChannelIdRef =
+  useRef<number | null>(null);
+
+const activeConversationIdRef =
+  useRef<number | null>(null);
+
+const canSpeakRef = useRef(false);
 
   const localStreamRef =
     useRef<MediaStream | null>(null);
@@ -112,21 +145,29 @@ export function VoiceProvider({
     useRef<Set<string>>(new Set());
 
   const [activeChannelId, setActiveChannelId] =
-    useState<number | null>(null);
+  useState<number | null>(null);
 
-  const [participants, setParticipants] =
-    useState<VoiceParticipant[]>([]);
+const [
+  activeConversationId,
+  setActiveConversationId,
+] = useState<number | null>(null);
+
+const [participants, setParticipants] =
+  useState<VoiceParticipant[]>([]);
 
   const [status, setStatus] =
     useState<VoiceConnectionStatus>(
       "disconnected"
     );
 
-  const [hasMicrophone, setHasMicrophone] =
-    useState(false);
+const [hasMicrophone, setHasMicrophone] =
+  useState(false);
 
-  const [isMuted, setIsMuted] =
-    useState(false);
+const [canSpeak, setCanSpeak] =
+  useState(false);
+
+const [isMuted, setIsMuted] =
+  useState(false);
 
   const closePeerConnection =
     useCallback(
@@ -304,11 +345,8 @@ export function VoiceProvider({
         const localStream =
           localStreamRef.current;
 
-        if (!localStream) {
-          throw new Error(
-            "Mikrofon bağlantısı mövcud deyil."
-          );
-        }
+        
+        
 
         const peerConnection =
           new RTCPeerConnection({
@@ -325,14 +363,23 @@ export function VoiceProvider({
           peerConnection
         );
 
+       if (localStream) {
+  localStream
+    .getAudioTracks()
+    .forEach(track => {
+      peerConnection.addTrack(
+        track,
         localStream
-          .getTracks()
-          .forEach(track => {
-            peerConnection.addTrack(
-              track,
-              localStream
-            );
-          });
+      );
+    });
+} else {
+  peerConnection.addTransceiver(
+    "audio",
+    {
+      direction: "recvonly",
+    }
+  );
+}
 
         peerConnection.onicecandidate =
           event => {
@@ -473,7 +520,12 @@ audioElement.setAttribute(
           senderConnectionId
         );
 
-        await ensureMicrophone();
+       if (
+  canSpeakRef.current &&
+  !localStreamRef.current
+) {
+  await ensureMicrophone();
+}
 
         const peerConnection =
           getOrCreatePeerConnection(
@@ -759,34 +811,36 @@ audioElement.setAttribute(
             accessToken
           );
 
-        newConnection.on(
-          "VoiceParticipantsUpdated",
-          (
-            channelId: number,
-            updatedParticipants:
-              VoiceParticipant[]
-          ) => {
-            if (
-              activeChannelIdRef.current !==
-              channelId
-            ) {
-              return;
-            }
+      newConnection.on(
+  "VoiceParticipantsUpdated",
+  (
+    roomId: number,
+    updatedParticipants: VoiceParticipant[]
+  ) => {
+    const activeRoomId =
+      activeChannelIdRef.current ??
+      (
+        activeConversationIdRef.current !== null
+          ? -activeConversationIdRef.current
+          : null
+      );
 
-            setParticipants(
-              updatedParticipants
-            );
+    if (activeRoomId !== roomId) {
+      return;
+    }
 
-            void synchronizeParticipants(
-              updatedParticipants
-            ).catch(error => {
-              console.error(
-                "[Voice] İştirakçılar sinxronlaşdırılmadı:",
-                error
-              );
-            });
-          }
-        );
+    setParticipants(updatedParticipants);
+
+    void synchronizeParticipants(
+      updatedParticipants
+    ).catch(error => {
+      console.error(
+        "[Voice] İştirakçılar sinxronlaşdırılmadı:",
+        error
+      );
+    });
+  }
+);
 
         newConnection.on(
           "ReceiveWebRtcOffer",
@@ -850,55 +904,94 @@ audioElement.setAttribute(
           }
         );
 
-        newConnection.onreconnected(
-          async () => {
-            setStatus("connected");
+       newConnection.onreconnected(
+  async () => {
+    setStatus("connected");
 
-            closeAllPeerConnections();
+    closeAllPeerConnections();
 
-            const channelId =
-              activeChannelIdRef.current;
+    const conversationId =
+      activeConversationIdRef.current;
 
-            if (channelId === null) {
-              return;
-            }
+    const channelId =
+      activeChannelIdRef.current;
 
-            try {
-              await ensureMicrophone();
+    try {
+      if (conversationId !== null) {
+        canSpeakRef.current = true;
 
-              await newConnection.invoke(
-                "JoinVoiceChannel",
-                channelId
-              );
-            } catch (error) {
-              console.error(
-                "Voice kanalına yenidən qoşulmaq alınmadı:",
-                error
-              );
+        setCanSpeak(true);
 
-              activeChannelIdRef.current =
-                null;
+        await ensureMicrophone();
 
-              setActiveChannelId(null);
-              setParticipants([]);
-
-              closeAllPeerConnections();
-              stopMicrophone();
-            }
-          }
+        await newConnection.invoke(
+          "JoinConversationVoice",
+          conversationId
         );
 
+        return;
+      }
+
+      if (channelId === null) {
+        return;
+      }
+
+      const userCanSpeak =
+        await newConnection.invoke<boolean>(
+          "CanSpeakInVoiceChannel",
+          channelId
+        );
+
+      canSpeakRef.current =
+        userCanSpeak;
+
+      setCanSpeak(userCanSpeak);
+
+      if (userCanSpeak) {
+        await ensureMicrophone();
+      } else {
+        stopMicrophone();
+      }
+
+      await newConnection.invoke(
+        "JoinVoiceChannel",
+        channelId
+      );
+    } catch (error) {
+      console.error(
+        "Voice otağına yenidən qoşulmaq alınmadı:",
+        error
+      );
+
+      activeChannelIdRef.current = null;
+      activeConversationIdRef.current = null;
+      canSpeakRef.current = false;
+
+      setActiveChannelId(null);
+      setActiveConversationId(null);
+      setCanSpeak(false);
+      setParticipants([]);
+
+      closeAllPeerConnections();
+      stopMicrophone();
+    }
+  }
+);
+
         newConnection.onclose(() => {
-          activeChannelIdRef.current =
-            null;
+  activeChannelIdRef.current = null;
+  activeConversationIdRef.current = null;
+  canSpeakRef.current = false;
 
-          setActiveChannelId(null);
-          setStatus("disconnected");
-          setParticipants([]);
+  setActiveChannelId(null);
+  setActiveConversationId(null);
+  setCanSpeak(false);
+  setStatus("disconnected");
+  setParticipants([]);
 
-          closeAllPeerConnections();
-          stopMicrophone();
-        });
+  closeAllPeerConnections();
+  stopMicrophone();
+});
 
         connectionRef.current =
           newConnection;
@@ -937,111 +1030,279 @@ audioElement.setAttribute(
       stopMicrophone,
     ]);
 
-  const joinVoiceChannel =
-    useCallback(
-      async (channelId: number) => {
-        if (
-          !Number.isInteger(channelId) ||
-          channelId <= 0
-        ) {
-          throw new Error(
-            "Voice kanal məlumatı düzgün deyil."
-          );
-        }
+const joinVoiceChannel =
+  useCallback(
+    async (channelId: number) => {
+      if (
+        !Number.isInteger(channelId) ||
+        channelId <= 0
+      ) {
+        throw new Error(
+          "Voice kanal məlumatı düzgün deyil."
+        );
+      }
 
-        const connection =
-          await getConnection();
+      const connection =
+        await getConnection();
 
+    let userCanSpeak: boolean;
+
+try {
+  userCanSpeak =
+    await connection.invoke<boolean>(
+      "CanSpeakInVoiceChannel",
+      channelId
+    );
+} catch (error) {
+  throw new Error(
+    getVoiceHubErrorMessage(error)
+  );
+}
+
+      canSpeakRef.current =
+        userCanSpeak;
+
+      setCanSpeak(userCanSpeak);
+
+      if (userCanSpeak) {
         await ensureMicrophone();
+      } else {
+        stopMicrophone();
+      }
 
-        const previousChannelId =
-          activeChannelIdRef.current;
+      const previousChannelId =
+  activeChannelIdRef.current;
 
-        if (
-          previousChannelId === channelId
-        ) {
-          return;
-        }
+const previousConversationId =
+  activeConversationIdRef.current;
 
-        if (
-          previousChannelId !== null &&
-          connection.state ===
-            HubConnectionState.Connected
-        ) {
+if (
+  previousChannelId === channelId &&
+  previousConversationId === null
+) {
+  closeAllPeerConnections();
+  setParticipants([]);
+
+  await connection.invoke(
+    "JoinVoiceChannel",
+    channelId
+  );
+
+  return;
+}
+
+if (
+  connection.state ===
+  HubConnectionState.Connected
+) {
+  if (previousChannelId !== null) {
+    await connection.invoke(
+      "LeaveVoiceChannel",
+      previousChannelId
+    );
+  }
+
+  if (previousConversationId !== null) {
+    await connection.invoke(
+      "LeaveConversationVoice",
+      previousConversationId
+    );
+  }
+}
+
+closeAllPeerConnections();
+
+activeConversationIdRef.current = null;
+activeChannelIdRef.current = channelId;
+
+setActiveConversationId(null);
+setActiveChannelId(channelId);
+setParticipants([]);
+
+      
+
+      try {
+        await connection.invoke(
+          "JoinVoiceChannel",
+          channelId
+        );
+      } catch (error) {
+        activeChannelIdRef.current =
+          null;
+
+        canSpeakRef.current = false;
+
+        setActiveChannelId(null);
+        setCanSpeak(false);
+        setParticipants([]);
+
+        closeAllPeerConnections();
+        stopMicrophone();
+
+        throw new Error(
+  getVoiceHubErrorMessage(error)
+);
+      }
+    },
+    [
+      getConnection,
+      ensureMicrophone,
+      closeAllPeerConnections,
+      stopMicrophone,
+    ]
+  );
+
+const joinConversationVoice =
+  useCallback(
+    async (conversationId: number) => {
+      if (
+        !Number.isInteger(conversationId) ||
+        conversationId <= 0
+      ) {
+        throw new Error(
+          "Conversation məlumatı düzgün deyil."
+        );
+      }
+
+      const connection =
+        await getConnection();
+
+      await ensureMicrophone();
+
+      canSpeakRef.current = true;
+      setCanSpeak(true);
+
+      const previousChannelId =
+        activeChannelIdRef.current;
+
+      const previousConversationId =
+        activeConversationIdRef.current;
+
+      if (
+        previousConversationId === conversationId &&
+        previousChannelId === null
+      ) {
+        closeAllPeerConnections();
+        setParticipants([]);
+
+        await connection.invoke(
+          "JoinConversationVoice",
+          conversationId
+        );
+
+        return;
+      }
+
+      if (
+        connection.state ===
+        HubConnectionState.Connected
+      ) {
+        if (previousChannelId !== null) {
           await connection.invoke(
             "LeaveVoiceChannel",
             previousChannelId
           );
         }
 
-        closeAllPeerConnections();
-
-        activeChannelIdRef.current =
-          channelId;
-
-        setActiveChannelId(channelId);
-        setParticipants([]);
-
-        try {
+        if (previousConversationId !== null) {
           await connection.invoke(
-            "JoinVoiceChannel",
-            channelId
+            "LeaveConversationVoice",
+            previousConversationId
           );
-        } catch (error) {
-          activeChannelIdRef.current =
-            null;
-
-          setActiveChannelId(null);
-          setParticipants([]);
-
-          closeAllPeerConnections();
-          stopMicrophone();
-
-          throw error;
         }
-      },
-      [
-        getConnection,
-        ensureMicrophone,
-        closeAllPeerConnections,
-        stopMicrophone,
-      ]
-    );
+      }
 
-  const leaveVoiceChannel =
-    useCallback(async () => {
-      const connection =
-        connectionRef.current;
+      closeAllPeerConnections();
 
-      const channelId =
-        activeChannelIdRef.current;
+      activeChannelIdRef.current = null;
+      activeConversationIdRef.current =
+        conversationId;
+
+      setActiveChannelId(null);
+      setActiveConversationId(
+        conversationId
+      );
+      setParticipants([]);
 
       try {
-        if (
-          connection &&
-          channelId !== null &&
-          connection.state ===
-            HubConnectionState.Connected
-        ) {
+        await connection.invoke(
+          "JoinConversationVoice",
+          conversationId
+        );
+      } catch (error) {
+        activeChannelIdRef.current = null;
+        activeConversationIdRef.current = null;
+        canSpeakRef.current = false;
+
+        setActiveChannelId(null);
+        setActiveConversationId(null);
+        setCanSpeak(false);
+        setParticipants([]);
+
+        closeAllPeerConnections();
+        stopMicrophone();
+
+        throw new Error(
+          getVoiceHubErrorMessage(error)
+        );
+      }
+    },
+    [
+      getConnection,
+      ensureMicrophone,
+      closeAllPeerConnections,
+      stopMicrophone,
+    ]
+  );
+
+  const leaveVoiceChannel =
+  useCallback(async () => {
+    const connection =
+      connectionRef.current;
+
+    const channelId =
+      activeChannelIdRef.current;
+
+    const conversationId =
+      activeConversationIdRef.current;
+
+    try {
+      if (
+        connection &&
+        connection.state ===
+          HubConnectionState.Connected
+      ) {
+        if (channelId !== null) {
           await connection.invoke(
             "LeaveVoiceChannel",
             channelId
           );
         }
-      } finally {
-        activeChannelIdRef.current =
-          null;
 
-        setActiveChannelId(null);
-        setParticipants([]);
-
-        closeAllPeerConnections();
-        stopMicrophone();
+        if (conversationId !== null) {
+          await connection.invoke(
+            "LeaveConversationVoice",
+            conversationId
+          );
+        }
       }
-    }, [
-      closeAllPeerConnections,
-      stopMicrophone,
-    ]);
+    } finally {
+      activeChannelIdRef.current = null;
+      activeConversationIdRef.current = null;
+      canSpeakRef.current = false;
+
+      setActiveChannelId(null);
+      setActiveConversationId(null);
+      setCanSpeak(false);
+      setParticipants([]);
+
+      closeAllPeerConnections();
+      stopMicrophone();
+    }
+  }, [
+    closeAllPeerConnections,
+    stopMicrophone,
+  ]);
 
   const toggleMute =
     useCallback(() => {
@@ -1067,50 +1328,56 @@ audioElement.setAttribute(
       });
     }, []);
 
-  useEffect(() => {
-    return () => {
-      const connection =
-        connectionRef.current;
+useEffect(() => {
+  return () => {
+    const connection =
+      connectionRef.current;
 
-      connectionRef.current = null;
-      activeChannelIdRef.current =
-        null;
+    connectionRef.current = null;
+    activeChannelIdRef.current = null;
+    activeConversationIdRef.current = null;
+    canSpeakRef.current = false;
 
-      closeAllPeerConnections();
-      stopMicrophone();
+    closeAllPeerConnections();
+    stopMicrophone();
 
-      if (connection) {
-        void connection.stop();
-      }
-    };
-  }, [
-    closeAllPeerConnections,
-    stopMicrophone,
-  ]);
+    if (connection) {
+      void connection.stop();
+    }
+  };
+}, [
+  closeAllPeerConnections,
+  stopMicrophone,
+]);
 
-  const contextValue =
-    useMemo<VoiceContextValue>(
-      () => ({
-        activeChannelId,
-        participants,
-        status,
-        hasMicrophone,
-        isMuted,
-        joinVoiceChannel,
-        leaveVoiceChannel,
-        toggleMute,
-      }),
-      [
-        activeChannelId,
-        participants,
-        status,
-        hasMicrophone,
-        isMuted,
-        joinVoiceChannel,
-        leaveVoiceChannel,
-        toggleMute,
-      ]
-    );
+  const contextValue = useMemo<VoiceContextValue>(
+  () => ({
+    activeChannelId,
+    activeConversationId,
+    participants,
+    status,
+    hasMicrophone,
+    canSpeak,
+    isMuted,
+    joinVoiceChannel,
+    joinConversationVoice,
+    leaveVoiceChannel,
+    toggleMute,
+  }),
+  [
+    activeChannelId,
+    activeConversationId,
+    participants,
+    status,
+    hasMicrophone,
+    canSpeak,
+    isMuted,
+    joinVoiceChannel,
+    joinConversationVoice,
+    leaveVoiceChannel,
+    toggleMute,
+  ]
+);
 
   return (
     <VoiceContext.Provider

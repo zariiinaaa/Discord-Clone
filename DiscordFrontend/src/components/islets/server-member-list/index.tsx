@@ -8,6 +8,7 @@ import {
 import Image from "next/image";
 
 import {
+  banServerMember,
   getServerMembers,
   kickServerMember,
 } from "@/lib/serverApi";
@@ -15,8 +16,20 @@ import {
 import type {
   ServerMemberResponse,
 } from "@/lib/serverApi";
+import {
+  assignServerRole,
+  getServerRoles,
+  removeServerRole,
+} from "@/lib/serverRoleApi";
+
+import type {
+  ServerRoleResponse,
+} from "@/lib/serverRoleApi";
 
 
+import {
+  ServerPermission,
+} from "@/lib/serverPermissions";
 import {
   useCurrentUserStore,
 } from "@/state/user";
@@ -77,18 +90,65 @@ function getStatusColor(
       return "bg-gray-500";
   }
 }
+function getHighestRole(
+  member: ServerMemberResponse
+): ServerRoleResponse | null {
+  return [...member.roles]
+    .filter(role => !role.isDefault)
+    .sort(
+      (firstRole, secondRole) =>
+        secondRole.position -
+        firstRole.position
+    )[0] ?? null;
+}
 
+function getHighestDisplayedRole(
+  member: ServerMemberResponse
+): ServerRoleResponse | null {
+  return [...member.roles]
+    .filter(
+      role =>
+        !role.isDefault &&
+        role.isDisplayedSeparately
+    )
+    .sort(
+      (firstRole, secondRole) =>
+        secondRole.position -
+        firstRole.position
+    )[0] ?? null;
+}
 function MemberItem({
   member,
   canKick,
+  canBan,
   isKicking,
   onKick,
+  onOpenActionMenu,
 }: {
   member: ServerMemberResponse;
   canKick: boolean;
+  canBan: boolean;
+  canManageRoles: boolean;
   isKicking: boolean;
+  isManagingRoles: boolean;
+  changingRoleId: number | null;
+  availableRoles: ServerRoleResponse[];
+
   onKick: (
     member: ServerMemberResponse
+  ) => void;
+onOpenActionMenu: (
+  member: ServerMemberResponse,
+  x: number,
+  y: number
+) => void;
+  onToggleRoles: (
+    memberUserId: number
+  ) => void;
+
+  onToggleRole: (
+    member: ServerMemberResponse,
+    role: ServerRoleResponse
   ) => void;
 }) {
   const name = getMemberName(member);
@@ -99,9 +159,29 @@ function MemberItem({
   const isOffline =
     member.status === 0;
 
+  const highestRole =
+    getHighestRole(member);
+
   return (
     <div
-      className={`group flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-white/5 ${
+onContextMenu={event => {
+  if (
+    (!canKick && !canBan) ||
+    isKicking
+  ) {
+    return;
+  }
+
+  event.preventDefault();
+
+  onOpenActionMenu(
+    member,
+    event.clientX,
+    event.clientY
+  );
+}}
+    
+      className={`flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-white/5 ${
         isOffline
           ? "opacity-50 hover:opacity-80"
           : ""
@@ -134,7 +214,14 @@ function MemberItem({
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <p className="truncate text-sm font-medium text-gray-300 group-hover:text-white">
+          <p
+            className="truncate text-sm font-medium"
+            style={{
+              color:
+                highestRole?.colorHex ??
+                "#D1D5DB",
+            }}
+          >
             {name}
           </p>
 
@@ -155,19 +242,6 @@ function MemberItem({
           </p>
         )}
       </div>
-
-            {canKick && (
-        <button
-          type="button"
-          disabled={isKicking}
-          onClick={() => onKick(member)}
-          className="hidden flex-none rounded px-2 py-1 text-xs font-medium text-red-400 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50 group-hover:block"
-        >
-          {isKicking
-            ? "Kicking..."
-            : "Kick"}
-        </button>
-      )}
     </div>
   );
 }
@@ -181,7 +255,18 @@ export default function ServerMemberList({
     useState<ServerMemberResponse[]>(
       []
     );
+const [roles, setRoles] =
+  useState<ServerRoleResponse[]>([]);
 
+const [
+  managingMemberUserId,
+  setManagingMemberUserId,
+] = useState<number | null>(null);
+
+const [
+  changingRoleId,
+  setChangingRoleId,
+] = useState<number | null>(null);
       const currentUser =
     useCurrentUserStore(
       state => state.currentUser
@@ -197,7 +282,27 @@ export default function ServerMemberList({
     kickingUserId,
     setKickingUserId,
   ] = useState<number | null>(null);
+const [
+  memberToBan,
+  setMemberToBan,
+] = useState<ServerMemberResponse | null>(null);
+const [
+  memberActionMenu,
+  setMemberActionMenu,
+] = useState<{
+  member: ServerMemberResponse;
+  x: number;
+  y: number;
+} | null>(null);
+const [
+  banReason,
+  setBanReason,
+] = useState("");
 
+const [
+  isBanningMember,
+  setIsBanningMember,
+] = useState(false);
   const [
     actionError,
     setActionError,
@@ -211,15 +316,31 @@ export default function ServerMemberList({
         setIsLoading(true);
         setError(null);
 
-        const response =
-          await getServerMembers(
-            serverId,
-            accessToken
-          );
+        const [
+  membersResponse,
+  rolesResponse,
+] = await Promise.all([
+  getServerMembers(
+    serverId,
+    accessToken
+  ),
+  getServerRoles(
+    serverId,
+    accessToken
+  ),
+]);
 
-        if (!isCancelled) {
-          setMembers(response);
-        }
+if (!isCancelled) {
+  setMembers(membersResponse);
+
+  setRoles(
+    [...rolesResponse].sort(
+      (firstRole, secondRole) =>
+        secondRole.position -
+        firstRole.position
+    )
+  );
+}
       } catch (loadError) {
         if (!isCancelled) {
           setError(
@@ -352,11 +473,45 @@ useEffect(() => {
         member.isOwner
     );
 
+    const currentUserMember = members.find(
+  member => member.userId === currentUserId
+);
+
+const canManageRoles =
+  isCurrentUserOwner ||
+  currentUserMember?.roles.some(role =>
+    role.permissions.includes(
+      ServerPermission.Administrator
+    ) ||
+    role.permissions.includes(
+      ServerPermission.ManageRoles
+    )
+  ) === true;
+const canKickMembers =
+  isCurrentUserOwner ||
+  currentUserMember?.roles.some(role =>
+    role.permissions.includes(
+      ServerPermission.Administrator
+    ) ||
+    role.permissions.includes(
+      ServerPermission.KickMembers
+    )
+  ) === true;
+  const canBanMembers =
+  isCurrentUserOwner ||
+  currentUserMember?.roles.some(role =>
+    role.permissions.includes(
+      ServerPermission.Administrator
+    ) ||
+    role.permissions.includes(
+      ServerPermission.BanMembers
+    )
+  ) === true;
   const handleKickMember = async (
     member: ServerMemberResponse
   ) => {
     if (
-      !isCurrentUserOwner ||
+       !canKickMembers ||
       member.isOwner ||
       member.userId ===
         currentUserId ||
@@ -407,8 +562,114 @@ useEffect(() => {
       setKickingUserId(null);
     }
   };
+const handleBanMember = async () => {
+  if (
+    !memberToBan ||
+    !canBanMembers ||
+    memberToBan.isOwner ||
+    memberToBan.userId === currentUserId ||
+    isBanningMember
+  ) {
+    return;
+  }
 
+  try {
+    setIsBanningMember(true);
+    setActionError(null);
 
+    await banServerMember(
+      serverId,
+      memberToBan.userId,
+      banReason.trim() || null,
+      accessToken
+    );
+
+    setMembers(currentMembers =>
+      currentMembers.filter(
+        member =>
+          member.userId !==
+          memberToBan.userId
+      )
+    );
+
+    setMemberToBan(null);
+    setBanReason("");
+
+    window.dispatchEvent(
+      new CustomEvent(
+        "server-members:changed",
+        {
+          detail: {
+            serverId,
+          },
+        }
+      )
+    );
+  } catch (banError) {
+    setActionError(
+      banError instanceof Error
+        ? banError.message
+        : "Member could not be banned."
+    );
+  } finally {
+    setIsBanningMember(false);
+  }
+};
+const handleToggleMemberRole = async (
+  member: ServerMemberResponse,
+  role: ServerRoleResponse
+) => {
+  if (
+    role.isDefault ||
+    changingRoleId !== null
+  ) {
+    return;
+  }
+
+  const isRoleAssigned =
+    member.roles.some(
+      memberRole =>
+        memberRole.id === role.id
+    );
+
+  try {
+    setChangingRoleId(role.id);
+    setActionError(null);
+
+    if (isRoleAssigned) {
+      await removeServerRole(
+        serverId,
+        role.id,
+        member.userId,
+        accessToken
+      );
+    } else {
+      await assignServerRole(
+        serverId,
+        role.id,
+        member.userId,
+        accessToken
+      );
+    }
+
+    const refreshedMembers =
+      await getServerMembers(
+        serverId,
+        accessToken
+      );
+
+    setMembers(refreshedMembers);
+    setManagingMemberUserId(null);
+  } catch (roleError) {
+    setActionError(
+      roleError instanceof Error
+        ? roleError.message
+        : "Member role could not be changed."
+    );
+  } finally {
+    setChangingRoleId(null);
+  }
+};
   const sortedMembers = [
     ...members,
   ].sort((first, second) => {
@@ -425,15 +686,63 @@ useEffect(() => {
       );
   });
 
-  const onlineMembers =
-    sortedMembers.filter(
-      member => member.status !== 0
-    );
+ 
 
-  const offlineMembers =
-    sortedMembers.filter(
-      member => member.status === 0
-    );
+
+const displayedRoleGroups = roles
+  .filter(
+    role =>
+      !role.isDefault &&
+      role.isDisplayedSeparately
+  )
+  .sort(
+    (firstRole, secondRole) =>
+      secondRole.position -
+      firstRole.position
+  )
+  .map(role => ({
+    role,
+
+    members: sortedMembers.filter(
+      member =>
+        getHighestDisplayedRole(member)
+          ?.id === role.id
+    ),
+  }))
+  .filter(
+    group =>
+      group.members.length > 0
+  );
+
+const groupedRoleUserIds = new Set(
+  displayedRoleGroups.flatMap(
+    group =>
+      group.members.map(
+        member => member.userId
+      )
+  )
+);
+
+const onlineMembers =
+  sortedMembers.filter(
+    member =>
+      member.status !== 0 &&
+      !groupedRoleUserIds.has(
+        member.userId
+      )
+  );
+
+const offlineMembers =
+  sortedMembers.filter(
+    member =>
+      member.status === 0 &&
+      !groupedRoleUserIds.has(
+        member.userId
+      )
+  );
+
+
+
 
   return (
     <aside className="hidden w-60 flex-none overflow-y-auto bg-[#2b2d31] px-2 py-5 lg:block">
@@ -461,7 +770,92 @@ useEffect(() => {
             No members found.
           </p>
         )}
+{!isLoading &&
+  !error &&
+  displayedRoleGroups.map(group => (
+    <section
+      key={group.role.id}
+      className="mb-5"
+    >
+      <h2
+        className="mb-1 px-2 text-[11px] font-semibold uppercase"
+        style={{
+          color:
+            group.role.colorHex ??
+            "#949BA4",
+        }}
+      >
+        {group.role.name} —{" "}
+        {group.members.length}
+      </h2>
 
+      {group.members.map(member => (
+        <MemberItem
+          key={member.id}
+          member={member}
+         canKick={
+  canKickMembers &&
+  !member.isOwner &&
+  member.userId !== currentUserId
+}
+
+canBan={
+  canBanMembers &&
+  !member.isOwner &&
+  member.userId !== currentUserId
+}
+
+onOpenActionMenu={(
+  selectedMember,
+  x,
+  y
+) => {
+  setMemberActionMenu({
+    member: selectedMember,
+    x,
+    y,
+  });
+}}
+          canManageRoles={
+            canManageRoles &&
+            (
+              isCurrentUserOwner ||
+              (
+                !member.isOwner &&
+                member.userId !==
+                  currentUserId
+              )
+            )
+          }
+          isKicking={
+            kickingUserId ===
+            member.userId
+          }
+          isManagingRoles={
+            managingMemberUserId ===
+            member.userId
+          }
+          changingRoleId={
+            changingRoleId
+          }
+          availableRoles={roles}
+          onKick={handleKickMember}
+          onToggleRoles={memberUserId =>
+            setManagingMemberUserId(
+              currentManagingUserId =>
+                currentManagingUserId ===
+                memberUserId
+                  ? null
+                  : memberUserId
+            )
+          }
+          onToggleRole={
+            handleToggleMemberRole
+          }
+        />
+      ))}
+    </section>
+  ))}
       {!isLoading &&
         !error &&
         onlineMembers.length > 0 && (
@@ -473,22 +867,59 @@ useEffect(() => {
 
             {onlineMembers.map(
               member => (
-                <MemberItem
+               <MemberItem
   key={member.id}
   member={member}
-  canKick={
-    isCurrentUserOwner &&
-    !member.isOwner &&
-    member.userId !==
-      currentUserId
+canKick={
+  canKickMembers &&
+  !member.isOwner &&
+  member.userId !== currentUserId
+}
+canBan={
+  canBanMembers &&
+  !member.isOwner &&
+  member.userId !== currentUserId
+}
+
+onOpenActionMenu={(
+  selectedMember,
+  x,
+  y
+) => {
+  setMemberActionMenu({
+    member: selectedMember,
+    x,
+    y,
+  });
+}}
+  canManageRoles={
+    canManageRoles &&
+    (
+      isCurrentUserOwner ||
+      (
+        !member.isOwner &&
+        member.userId !== currentUserId
+      )
+    )
   }
   isKicking={
-    kickingUserId ===
-    member.userId
+    kickingUserId === member.userId
   }
-  onKick={
-    handleKickMember
+  isManagingRoles={
+    managingMemberUserId === member.userId
   }
+  changingRoleId={changingRoleId}
+  availableRoles={roles}
+  onKick={handleKickMember}
+  onToggleRoles={memberUserId =>
+    setManagingMemberUserId(
+      currentUserId =>
+        currentUserId === memberUserId
+          ? null
+          : memberUserId
+    )
+  }
+  onToggleRole={handleToggleMemberRole}
 />
               )
             )}
@@ -506,27 +937,234 @@ useEffect(() => {
 
             {offlineMembers.map(
               member => (
-                <MemberItem
+               <MemberItem
   key={member.id}
   member={member}
-  canKick={
-    isCurrentUserOwner &&
-    !member.isOwner &&
-    member.userId !==
-      currentUserId
+canKick={
+  canKickMembers &&
+  !member.isOwner &&
+  member.userId !== currentUserId
+}
+
+canBan={
+  canBanMembers &&
+  !member.isOwner &&
+  member.userId !== currentUserId
+}
+
+onOpenActionMenu={(
+  selectedMember,
+  x,
+  y
+) => {
+  setMemberActionMenu({
+    member: selectedMember,
+    x,
+    y,
+  });
+}}
+  canManageRoles={
+    canManageRoles &&
+    (
+      isCurrentUserOwner ||
+      (
+        !member.isOwner &&
+        member.userId !== currentUserId
+      )
+    )
   }
   isKicking={
-    kickingUserId ===
-    member.userId
+    kickingUserId === member.userId
   }
-  onKick={
-    handleKickMember
+  isManagingRoles={
+    managingMemberUserId === member.userId
   }
+  changingRoleId={changingRoleId}
+  availableRoles={roles}
+  onKick={handleKickMember}
+  onToggleRoles={memberUserId =>
+    setManagingMemberUserId(
+      currentUserId =>
+        currentUserId === memberUserId
+          ? null
+          : memberUserId
+    )
+  }
+  onToggleRole={handleToggleMemberRole}
 />
               )
             )}
           </section>
         )}
+{memberToBan && (
+  <div
+    className="fixed inset-0 z-[210] flex items-center justify-center bg-black/75 px-4"
+    onMouseDown={() => {
+      if (isBanningMember) {
+        return;
+      }
+
+      setMemberToBan(null);
+      setBanReason("");
+    }}
+  >
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Ban Member"
+      onMouseDown={event =>
+        event.stopPropagation()
+      }
+      className="w-full max-w-md overflow-hidden rounded-xl bg-[#313338] text-white shadow-2xl"
+    >
+      <div className="p-6">
+        <h2 className="text-xl font-bold">
+          Ban Member
+        </h2>
+
+        <p className="mt-2 text-sm text-gray-300">
+          Are you sure you want to ban{" "}
+          <span className="font-semibold text-white">
+            {getMemberName(memberToBan)}
+          </span>
+          ?
+        </p>
+
+        <label className="mt-5 block text-xs font-bold uppercase text-gray-300">
+          Reason
+        </label>
+
+        <textarea
+          value={banReason}
+          onChange={event =>
+            setBanReason(
+              event.target.value
+            )
+          }
+          maxLength={500}
+          rows={3}
+          placeholder="Optional reason"
+          className="mt-2 w-full resize-none rounded-md bg-[#1e1f22] px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-primary"
+        />
+
+        {actionError && (
+          <p className="mt-4 rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            {actionError}
+          </p>
+        )}
+      </div>
+
+      <div className="flex justify-end gap-3 bg-[#2b2d31] px-6 py-4">
+        <button
+          type="button"
+          disabled={isBanningMember}
+          onClick={() => {
+            setMemberToBan(null);
+            setBanReason("");
+          }}
+          className="px-4 py-2.5 text-sm font-semibold text-white hover:underline disabled:opacity-50"
+        >
+          Cancel
+        </button>
+
+        <button
+          type="button"
+          disabled={isBanningMember}
+          onClick={() =>
+            void handleBanMember()
+          }
+          className="rounded-md bg-red-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-600 disabled:cursor-wait disabled:opacity-50"
+        >
+          {isBanningMember
+            ? "Banning..."
+            : "Ban Member"}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+{memberActionMenu && (
+  <>
+    <button
+      type="button"
+      aria-label="Close member menu"
+      onClick={() =>
+        setMemberActionMenu(null)
+      }
+      className="fixed inset-0 z-[190] cursor-default"
+    />
+
+    <div
+      className="fixed z-[200] w-56 rounded-md bg-[#111214] p-1.5 shadow-2xl"
+    style={{
+  left: Math.min(
+    memberActionMenu.x,
+    window.innerWidth - 240
+  ),
+  top: Math.min(
+    memberActionMenu.y,
+    window.innerHeight - 150
+  ),
+}}
+    >
+      <div className="px-2.5 py-2">
+        <p className="truncate text-xs font-bold text-gray-300">
+          {getMemberName(
+            memberActionMenu.member
+          )}
+        </p>
+
+        <p className="mt-0.5 text-[11px] text-gray-500">
+          Member Actions
+        </p>
+      </div>
+
+      <div className="my-1 border-t border-white/10" />
+
+      {canKickMembers &&
+        !memberActionMenu.member.isOwner &&
+        memberActionMenu.member.userId !==
+          currentUserId && (
+          <button
+            type="button"
+            onClick={() => {
+              const member =
+                memberActionMenu.member;
+
+              setMemberActionMenu(null);
+
+              void handleKickMember(
+                member
+              );
+            }}
+            className="flex w-full items-center rounded px-2.5 py-2 text-left text-sm font-medium text-red-400 hover:bg-red-500 hover:text-white"
+          >
+            Kick Member
+          </button>
+        )}
+
+      {canBanMembers &&
+        !memberActionMenu.member.isOwner &&
+        memberActionMenu.member.userId !==
+          currentUserId && (
+          <button
+            type="button"
+            onClick={() => {
+              setMemberToBan(
+                memberActionMenu.member
+              );
+
+              setBanReason("");
+              setMemberActionMenu(null);
+            }}
+            className="flex w-full items-center rounded px-2.5 py-2 text-left text-sm font-medium text-red-400 hover:bg-red-500 hover:text-white"
+          >
+            Ban Member
+          </button>
+        )}
+    </div>
+  </>
+)}
     </aside>
   );
 }

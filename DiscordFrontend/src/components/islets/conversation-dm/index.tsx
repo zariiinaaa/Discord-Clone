@@ -32,7 +32,9 @@ import {
   useChatHub,
 } from "@/components/chat/chat-hub-provider";
 
-
+import {
+  useVoice,
+} from "@/components/voice/voice-provider";
 
 import { useAuthStore } from "@/state/auth";
 import { useCurrentUserStore } from "@/state/user";
@@ -62,6 +64,11 @@ const {
   connection: sharedConnection,
   status: chatHubStatus,
 } = useChatHub();
+const {
+  activeConversationId,
+  joinConversationVoice,
+} = useVoice();
+
 
   const [conversation, setConversation] =
     useState<ConversationResponse | null>(null);
@@ -96,6 +103,12 @@ const {
 
   const [isUpdatingMute, setIsUpdatingMute] =
     useState(false);
+
+const [isJoiningVoice, setIsJoiningVoice] =
+  useState(false);
+
+const [voiceError, setVoiceError] =
+  useState<string | null>(null);
 
   const [isSavingEdit, setIsSavingEdit] =
     useState(false);
@@ -1251,6 +1264,32 @@ useEffect(() => {
       }
     };
 
+const handleJoinVoice = async () => {
+  if (
+    isJoiningVoice ||
+    activeConversationId === conversationId
+  ) {
+    return;
+  }
+
+  try {
+    setIsJoiningVoice(true);
+    setVoiceError(null);
+
+    await joinConversationVoice(
+      conversationId
+    );
+  } catch (joinError) {
+    setVoiceError(
+      joinError instanceof Error
+        ? joinError.message
+        : "DM zənginə qoşulmaq alınmadı."
+    );
+  } finally {
+    setIsJoiningVoice(false);
+  }
+};
+
   if (isLoading) {
     return (
       <main className="ml-[330px] flex min-h-screen items-center justify-center bg-background text-gray-300">
@@ -1366,6 +1405,21 @@ useEffect(() => {
         </div>
 
         <div className="ml-auto flex items-center gap-4">
+          <button
+  type="button"
+  onClick={() => void handleJoinVoice()}
+  disabled={
+    isJoiningVoice ||
+    activeConversationId === conversationId
+  }
+  className="rounded-md bg-green-500/15 px-3 py-2 text-xs font-semibold text-green-300 transition-colors hover:bg-green-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+>
+  {isJoiningVoice
+    ? "Qoşulur..."
+    : activeConversationId === conversationId
+      ? "📞 Zəngdəsiniz"
+      : "📞 Zəng et"}
+</button>
           <button
             type="button"
             onClick={() =>
@@ -1671,7 +1725,11 @@ useEffect(() => {
         <div className="h-6 px-1 text-xs font-semibold text-gray-300">
           {typingText}
         </div>
-
+{voiceError && (
+  <p className="mb-2 text-sm text-red-400">
+    {voiceError}
+  </p>
+)}
         {sendError && (
           <p className="mb-2 text-sm text-red-400">
             {sendError}

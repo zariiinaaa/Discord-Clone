@@ -86,13 +86,29 @@ export function createConversationMessage(
   request: CreateConversationMessageRequest,
   accessToken: string
 ): Promise<ConversationMessageResponse> {
+  const formData = new FormData();
+
+  formData.append(
+    "content",
+    request.content
+  );
+
+  if (
+    request.replyToMessageId !== null
+  ) {
+    formData.append(
+      "replyToMessageId",
+      request.replyToMessageId.toString()
+    );
+  }
+
   return apiRequest<
     ConversationMessageResponse
   >(
     `/api/v1/conversations/${conversationId}/messages`,
     {
       method: "POST",
-      body: JSON.stringify(request)
+      body: formData,
     },
     accessToken
   );

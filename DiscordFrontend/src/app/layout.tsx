@@ -5,7 +5,7 @@ import CommonLayout from "@/components/layout/common-layout";
 import CurrentUserLoader from "@/components/current-user-loader";
 import { ChatHubProvider } from "@/components/chat/chat-hub-provider";
 import { VoiceProvider } from "@/components/voice/voice-provider";
-import VoiceControlsPanel from "@/components/voice/voice-controls-panel";
+
 
 import "./globals.css";
 
@@ -30,7 +30,7 @@ export default function RootLayout({
 
             <CommonLayout />
 
-            <VoiceControlsPanel />
+          
 
             {children}
           </ChatHubProvider>

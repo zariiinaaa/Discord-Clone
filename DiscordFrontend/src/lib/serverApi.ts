@@ -1,5 +1,7 @@
 import { apiRequest } from "@/lib/api";
-
+import type {
+  ServerRoleResponse,
+} from "@/lib/serverRoleApi";
 export interface ServerResponse {
   id: number;
   name: string;
@@ -23,7 +25,24 @@ export interface ChannelResponse {
   parentCategoryId: number | null;
 }
 
+export interface CreateChannelRequest {
+  name: string;
+  topic?: string | null;
+  type: number;
+  isPrivate: boolean;
+  parentCategoryId?: number | null;
+  bitrate?: number | null;
+  userLimit?: number | null;
+}
 
+export interface UpdateChannelRequest {
+  name: string;
+  topic?: string | null;
+  isPrivate: boolean;
+  parentCategoryId: number | null;
+  bitrate?: number | null;
+  userLimit?: number | null;
+}
 export interface ServerMemberResponse {
   id: number;
   userId: number;
@@ -36,7 +55,19 @@ export interface ServerMemberResponse {
   isMuted: boolean;
   isDeafened: boolean;
   timedOutUntil: string | null;
+  roles: ServerRoleResponse[];
   joinedAt: string;
+}
+
+export interface ServerBanResponse {
+  id: number;
+  userId: number;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  bannedByUserId: number;
+  reason: string | null;
+  createdAt: string;
 }
 
 export interface ServerDetailsResponse
@@ -58,6 +89,7 @@ export interface UpdateServerRequest {
 }
 
 export interface CreateServerInviteRequest {
+  channelId: number;
   expirationHours: number | null;
   maxUses: number | null;
 }
@@ -280,6 +312,95 @@ export function kickServerMember(
 ): Promise<void> {
   return apiRequest<void>(
     `/api/v1/servers/${serverId}/members/${memberUserId}`,
+    {
+      method: "DELETE",
+    },
+    accessToken
+  );
+}
+
+export function updateChannel(
+  serverId: number,
+  channelId: number,
+  request: UpdateChannelRequest,
+  accessToken: string
+): Promise<ChannelResponse> {
+  return apiRequest<ChannelResponse>(
+    `/api/v1/servers/${serverId}/channels/${channelId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(request),
+    },
+    accessToken
+  );
+}
+
+export function deleteChannel(
+  serverId: number,
+  channelId: number,
+  accessToken: string
+): Promise<void> {
+  return apiRequest<void>(
+    `/api/v1/servers/${serverId}/channels/${channelId}`,
+    {
+      method: "DELETE",
+    },
+    accessToken
+  );
+}
+export function createChannel(
+  serverId: number,
+  request: CreateChannelRequest,
+  accessToken: string
+): Promise<ChannelResponse> {
+  return apiRequest<ChannelResponse>(
+    `/api/v1/servers/${serverId}/channels`,
+    {
+      method: "POST",
+      body: JSON.stringify(request),
+    },
+    accessToken
+  );
+}
+
+export function banServerMember(
+  serverId: number,
+  memberUserId: number,
+  reason: string | null,
+  accessToken: string
+): Promise<void> {
+  return apiRequest<void>(
+    `/api/v1/servers/${serverId}/bans/${memberUserId}`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        reason,
+      }),
+    },
+    accessToken
+  );
+}
+
+export function getServerBans(
+  serverId: number,
+  accessToken: string
+): Promise<ServerBanResponse[]> {
+  return apiRequest<ServerBanResponse[]>(
+    `/api/v1/servers/${serverId}/bans`,
+    {
+      method: "GET",
+    },
+    accessToken
+  );
+}
+
+export function unbanServerMember(
+  serverId: number,
+  bannedUserId: number,
+  accessToken: string
+): Promise<void> {
+  return apiRequest<void>(
+    `/api/v1/servers/${serverId}/bans/${bannedUserId}`,
     {
       method: "DELETE",
     },

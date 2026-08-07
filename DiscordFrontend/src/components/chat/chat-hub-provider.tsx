@@ -50,14 +50,8 @@ const ChatHubContext =
     null
   );
 
-/*
- * Backend-in göndərə bildiyi bütün ChatHub
- * event-ləri burada əvvəlcədən qeyd olunur.
- *
- * Beləliklə hansı səhifənin açıq olmasından
- * asılı olmayaraq SignalR həmin event-i
- * tanıyır və terminal warning vermir.
- */
+
+
 const CHAT_HUB_EVENTS = [
   "MessageCreated",
   "MessageUpdated",
@@ -72,7 +66,12 @@ const CHAT_HUB_EVENTS = [
   "ConversationDataChanged",
   "FriendDataChanged",
   "UserPresenceChanged",
+    "MessageReactionChanged",
+  "ConversationMessageReactionChanged",
   "ServerMembersChanged",
+  "ServerMemberRemoved",
+  "ServerChannelsChanged",
+  "ChannelAccessRevoked",
 ] as const;
 
 export function ChatHubProvider({
@@ -104,19 +103,11 @@ export function ChatHubProvider({
     const newConnection =
   createChatHubConnection();
 
-    /*
-     * Bu boş handler-lər event warning-lərinin
-     * qarşısını alır. Səhifələr daha sonra eyni
-     * connection-a öz real handler-lərini əlavə
-     * edəcəklər.
-     */
+  
     const passiveEventHandler =
       () => undefined;
 
-    /*
-     * Conversation siyahısının refreshsiz
-     * yenilənməsini təmin edir.
-     */
+   
     const handleConversationDataChanged =
       () => {
         console.log(
@@ -130,11 +121,7 @@ export function ChatHubProvider({
         );
       };
 
-    /*
-     * Dost siyahısı və friend request
-     * məlumatlarının refreshsiz yenilənməsini
-     * təmin edir.
-     */
+  
     const handleFriendDataChanged =
       () => {
         console.log(
@@ -203,6 +190,62 @@ const handleServerMembersChanged = (
   );
 };
 
+const handleServerMemberRemoved = (
+  serverId: number,
+  message: string
+) => {
+  window.dispatchEvent(
+    new CustomEvent(
+      "server-membership:removed",
+      {
+        detail: {
+          serverId,
+          message,
+        },
+      }
+    )
+  );
+
+  window.dispatchEvent(
+    new Event("servers:refresh")
+  );
+};
+
+
+const handleServerChannelsChanged = (
+  serverId: number
+) => {
+  window.dispatchEvent(
+    new CustomEvent(
+      "server-channels:changed",
+      {
+        detail: {
+          serverId,
+        },
+      }
+    )
+  );
+};
+
+const handleChannelAccessRevoked = (
+  serverId: number,
+  channelId: number,
+  message: string
+) => {
+  window.dispatchEvent(
+    new CustomEvent(
+      "channel-access:revoked",
+      {
+        detail: {
+          serverId,
+          channelId,
+          message,
+        },
+      }
+    )
+  );
+};
+
     CHAT_HUB_EVENTS.forEach(
       eventName => {
         newConnection.on(
@@ -229,6 +272,21 @@ const handleServerMembersChanged = (
 newConnection.on(
   "ServerMembersChanged",
   handleServerMembersChanged
+);
+
+newConnection.on(
+  "ServerMemberRemoved",
+  handleServerMemberRemoved
+);
+
+newConnection.on(
+  "ServerChannelsChanged",
+  handleServerChannelsChanged
+);
+
+newConnection.on(
+  "ChannelAccessRevoked",
+  handleChannelAccessRevoked
 );
 
     newConnection.onreconnecting(() => {
@@ -310,6 +368,21 @@ newConnection.on(
 newConnection.off(
   "ServerMembersChanged",
   handleServerMembersChanged
+);
+
+newConnection.off(
+  "ServerMemberRemoved",
+  handleServerMemberRemoved
+);
+
+newConnection.off(
+  "ServerChannelsChanged",
+  handleServerChannelsChanged
+);
+
+newConnection.off(
+  "ChannelAccessRevoked",
+  handleChannelAccessRevoked
 );
 
       CHAT_HUB_EVENTS.forEach(

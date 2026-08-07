@@ -119,11 +119,7 @@ export const createChatHubConnection = (
       .withUrl(
         `${API_URL}/hubs/chat`,
         {
-          /*
-           * Hər negotiation və reconnect
-           * zamanı store-dakı ən yeni tokeni
-           * götürür.
-           */
+         
         accessTokenFactory:
   accessTokenOverride
     ? () => accessTokenOverride

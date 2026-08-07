@@ -146,16 +146,64 @@ export default function DMChannelList(
             activeConversationIdRef.current;
 
           setConversations(
-            response.map(conversation =>
-              conversation.id ===
-              activeConversationId
-                ? {
-                    ...conversation,
-                    unreadCount: 0,
-                  }
-                : conversation
-            )
+  currentConversations => {
+    const responseById =
+      new Map(
+        response.map(
+          conversation => [
+            conversation.id,
+            conversation,
+          ]
+        )
+      );
+
+    const existingConversations =
+      currentConversations.flatMap(
+        conversation => {
+          const refreshedConversation =
+            responseById.get(
+              conversation.id
+            );
+
+          if (!refreshedConversation) {
+            return [];
+          }
+
+          responseById.delete(
+            conversation.id
           );
+
+          return [
+            refreshedConversation.id ===
+            activeConversationId
+              ? {
+                  ...refreshedConversation,
+                  unreadCount: 0,
+                }
+              : refreshedConversation,
+          ];
+        }
+      );
+
+    const newConversations =
+      Array.from(
+        responseById.values()
+      ).map(conversation =>
+        conversation.id ===
+        activeConversationId
+          ? {
+              ...conversation,
+              unreadCount: 0,
+            }
+          : conversation
+      );
+
+    return [
+      ...newConversations,
+      ...existingConversations,
+    ];
+  }
+);
 
           setError(null);
         } catch (refreshError) {
@@ -276,36 +324,81 @@ useEffect(() => {
 
   let isDisposed = false;
 
-  const joinAllConversations =
-    async () => {
-      for (
-        const conversationId of ids
-      ) {
+ const joinAllConversations =
+  async () => {
+    for (
+      const conversationId of ids
+    ) {
+      try {
         await connection.invoke(
           "JoinConversation",
           conversationId
         );
+      } catch (joinError) {
+        console.error(
+          `DM conversation ${conversationId} could not be joined:`,
+          joinError
+        );
       }
-    };
+    }
+  };
 
-  const refreshConversations =
-    async () => {
-      try {
-        const response =
-          await getMyConversations(
-            accessToken
-          );
+const refreshConversations =
+  async () => {
+    try {
+      const response =
+        await getMyConversations(
+          accessToken
+        );
 
-        if (isDisposed) {
-          return;
-        }
+      if (isDisposed) {
+        return;
+      }
 
-        const activeConversationId =
-          activeConversationIdRef.current;
+      const activeConversationId =
+        activeConversationIdRef.current;
 
-        setConversations(
-          response.map(
-            conversation =>
+      setConversations(
+        currentConversations => {
+          const responseById =
+            new Map(
+              response.map(
+                conversation => [
+                  conversation.id,
+                  conversation,
+                ]
+              )
+            );
+
+          const existingConversations =
+            currentConversations
+              .map(conversation => {
+                const refreshed =
+                  responseById.get(
+                    conversation.id
+                  );
+
+                if (!refreshed) {
+                  return conversation;
+                }
+
+                responseById.delete(
+                  conversation.id
+                );
+
+                return refreshed.id ===
+                  activeConversationId
+                  ? {
+                      ...refreshed,
+                      unreadCount: 0,
+                    }
+                  : refreshed;
+              });
+
+          const newConversations =
+            Array.from(
+              responseById.values()
+            ).map(conversation =>
               conversation.id ===
               activeConversationId
                 ? {
@@ -313,15 +406,21 @@ useEffect(() => {
                     unreadCount: 0,
                   }
                 : conversation
-          )
-        );
-      } catch (refreshError) {
-        console.error(
-          "DM list could not be refreshed:",
-          refreshError
-        );
-      }
-    };
+            );
+
+          return [
+            ...existingConversations,
+            ...newConversations,
+          ];
+        }
+      );
+    } catch (refreshError) {
+      console.error(
+        "DM list could not be refreshed:",
+        refreshError
+      );
+    }
+  };
 
   const handleMessageCreated = (
     eventConversationId: number,
@@ -348,7 +447,9 @@ useEffect(() => {
               conversation.id ===
               eventConversationId
           );
-
+window.dispatchEvent(
+  new Event("dm-unread:changed")
+);
         if (!targetConversation) {
           return currentConversations;
         }

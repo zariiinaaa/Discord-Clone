@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -11,7 +12,10 @@ import type {
   FormEvent,
 } from "react";
 
-import { useParams } from "next/navigation";
+import {
+  useParams,
+  useRouter,
+} from "next/navigation";
 
 import {
   getServerById,
@@ -24,7 +28,18 @@ import {
   getChannelMessages,
   updateMessage,
   type MessageResponse,
+  addMessageReaction,
+removeMessageReaction,
 } from "@/lib/messageApi";
+
+import {
+  getServerMembers,
+  type ServerMemberResponse,
+} from "@/lib/serverApi";
+
+import {
+  ServerPermission,
+} from "@/lib/serverPermissions";
 
 import {
   HubConnectionState,
@@ -33,9 +48,15 @@ import {
 import {
   useChatHub,
 } from "@/components/chat/chat-hub-provider";
+import {
+  useVoice,
+} from "@/components/voice/voice-provider";
 import { useAuthStore } from "@/state/auth";
 import { useCurrentUserStore } from "@/state/user";
-import { API_URL } from "@/lib/api";
+import {
+  API_URL,
+  isApiError,
+} from "@/lib/api";
 
 const TEXT_CHANNEL_TYPE = 0;
 
@@ -63,7 +84,7 @@ export default function ChannelPage() {
     serverId: string;
     channelId: string;
   }>();
-
+const router = useRouter();
   const accessToken = useAuthStore(
     state => state.accessToken
   );
@@ -78,7 +99,9 @@ export default function ChannelPage() {
   status: chatHubStatus,
 } = useChatHub();
 
-
+const {
+  leaveVoiceChannel,
+} = useVoice();
  
 
   const messageInputRef =
@@ -103,7 +126,8 @@ const [unreadMessageCount, setUnreadMessageCount] =
   useState(0);
     const [selectedFiles, setSelectedFiles] =
   useState<File[]>([]);
-
+const [serverMembers, setServerMembers] =
+  useState<ServerMemberResponse[]>([]);
   const [
     replyingToMessage,
     setReplyingToMessage,
@@ -148,6 +172,184 @@ const [unreadMessageCount, setUnreadMessageCount] =
 
   const [actionError, setActionError] =
     useState<string | null>(null);
+const redirectFromServer =
+  useCallback(
+    async (message?: string) => {
+      try {
+        await leaveVoiceChannel();
+      } catch {
+        /*
+         * İstifadəçi voice kanalında deyilsə
+         * əlavə əməliyyata ehtiyac yoxdur.
+         */
+      }
+
+      window.dispatchEvent(
+        new Event("servers:refresh")
+      );
+
+      if (message) {
+        window.alert(message);
+      }
+
+      router.replace("/channels/me");
+    },
+    [
+      leaveVoiceChannel,
+      router,
+    ]
+  );
+
+const handleChannelAccessDenied =
+  useCallback(
+    async (
+      serverId: number,
+      removedMessage: string
+    ) => {
+      if (!accessToken) {
+        await redirectFromServer(
+          removedMessage
+        );
+
+        return;
+      }
+
+      try {
+        /*
+         * Server hələ açılırsa istifadəçi
+         * server üzvüdür, sadəcə bu kanala
+         * girişi yoxdur və ya kanal silinib.
+         */
+        await getServerById(
+          serverId,
+          accessToken
+        );
+
+        window.alert(
+          "Bu kanala giriş icazəniz yoxdur və ya kanal artıq mövcud deyil."
+        );
+
+        router.replace(
+          `/servers/${serverId}`
+        );
+      } catch (serverAccessError) {
+        /*
+         * Server sorğusu da 403/404-dürsə
+         * istifadəçi artıq server üzvü deyil.
+         */
+        if (
+          isApiError(serverAccessError) &&
+          (
+            serverAccessError.status ===
+              403 ||
+            serverAccessError.status ===
+              404
+          )
+        ) {
+          await redirectFromServer(
+            removedMessage
+          );
+
+          return;
+        }
+
+        throw serverAccessError;
+      }
+    },
+    [
+      accessToken,
+      redirectFromServer,
+      router,
+    ]
+  );
+
+  useEffect(() => {
+  const currentServerId =
+    Number(params.serverId);
+
+  const handleServerMemberRemoved =
+    (event: Event) => {
+      const removedEvent =
+        event as CustomEvent<{
+          serverId: number;
+          message: string;
+        }>;
+
+      if (
+        removedEvent.detail.serverId !==
+        currentServerId
+      ) {
+        return;
+      }
+
+      void redirectFromServer(
+        removedEvent.detail.message
+      );
+    };
+
+  window.addEventListener(
+    "server-membership:removed",
+    handleServerMemberRemoved
+  );
+
+  return () => {
+    window.removeEventListener(
+      "server-membership:removed",
+      handleServerMemberRemoved
+    );
+  };
+}, [
+  params.serverId,
+  redirectFromServer,
+]);
+
+useEffect(() => {
+  const currentServerId =
+    Number(params.serverId);
+
+  const currentChannelId =
+    Number(params.channelId);
+
+  const handleChannelAccessRevoked =
+    (event: Event) => {
+      const revokedEvent =
+        event as CustomEvent<{
+          serverId: number;
+          channelId: number;
+          message: string;
+        }>;
+
+      if (
+        revokedEvent.detail.serverId !==
+          currentServerId ||
+        revokedEvent.detail.channelId !==
+          currentChannelId
+      ) {
+        return;
+      }
+
+      void handleChannelAccessDenied(
+        currentServerId,
+        revokedEvent.detail.message
+      );
+    };
+
+  window.addEventListener(
+    "channel-access:revoked",
+    handleChannelAccessRevoked
+  );
+
+  return () => {
+    window.removeEventListener(
+      "channel-access:revoked",
+      handleChannelAccessRevoked
+    );
+  };
+}, [
+  params.serverId,
+  params.channelId,
+  handleChannelAccessDenied,
+]);
 
   useEffect(() => {
     const serverId = Number(
@@ -193,19 +395,25 @@ const [unreadMessageCount, setUnreadMessageCount] =
         setEditContent("");
 
         const [
-          serverResponse,
-          messagesResponse,
-        ] = await Promise.all([
-          getServerById(
-            serverId,
-            accessToken
-          ),
+  serverResponse,
+  messagesResponse,
+  membersResponse,
+] = await Promise.all([
+  getServerById(
+    serverId,
+    accessToken
+  ),
 
-          getChannelMessages(
-            channelId,
-            accessToken
-          ),
-        ]);
+  getChannelMessages(
+    channelId,
+    accessToken
+  ),
+
+  getServerMembers(
+    serverId,
+    accessToken
+  ),
+]);
 
         const selectedChannel =
           serverResponse.channels.find(
@@ -229,18 +437,46 @@ const [unreadMessageCount, setUnreadMessageCount] =
         }
 
         if (!isCancelled) {
-          setServer(serverResponse);
-          setMessages(messagesResponse);
-        }
+  setServer(serverResponse);
+  setMessages(messagesResponse);
+  setServerMembers(membersResponse);
+}
       } catch (loadError) {
-        if (!isCancelled) {
-          setError(
-            loadError instanceof Error
-              ? loadError.message
-              : "Kanal yüklənə bilmədi."
-          );
-        }
-      } finally {
+  if (isCancelled) {
+    return;
+  }
+
+  if (
+    isApiError(loadError) &&
+    (
+      loadError.status === 403 ||
+      loadError.status === 404
+    )
+  ) {
+    try {
+      await handleChannelAccessDenied(
+        serverId,
+        "Artıq bu serverə giriş icazəniz yoxdur."
+      );
+    } catch (accessCheckError) {
+      if (!isCancelled) {
+        setError(
+          accessCheckError instanceof Error
+            ? accessCheckError.message
+            : "Kanal giriş icazəsi yoxlanıla bilmədi."
+        );
+      }
+    }
+
+    return;
+  }
+
+  setError(
+    loadError instanceof Error
+      ? loadError.message
+      : "Kanal yüklənə bilmədi."
+  );
+}finally {
         if (!isCancelled) {
           setIsLoading(false);
         }
@@ -256,9 +492,14 @@ const [unreadMessageCount, setUnreadMessageCount] =
     params.serverId,
     params.channelId,
     accessToken,
+     handleChannelAccessDenied,
   ]);
 
 useEffect(() => {
+  const serverId = Number(
+    params.serverId
+  );
+
   const channelId = Number(
     params.channelId
   );
@@ -266,6 +507,8 @@ useEffect(() => {
   if (
     !connection ||
     !accessToken ||
+    !Number.isInteger(serverId) ||
+    serverId <= 0 ||
     !Number.isInteger(channelId) ||
     channelId <= 0
   ) {
@@ -359,33 +602,7 @@ useEffect(() => {
         : currentMessage
   );
 };
- (
-    message: MessageResponse
-  ) => {
-    if (
-      message.channelId !== channelId
-    ) {
-      return;
-    }
-
-    setMessages(currentMessages =>
-      currentMessages.map(
-        currentMessage =>
-          currentMessage.id ===
-          message.id
-            ? message
-            : currentMessage
-      )
-    );
-
-    setReplyingToMessage(
-      currentMessage =>
-        currentMessage?.id ===
-        message.id
-          ? message
-          : currentMessage
-    );
-  };
+ 
 
   const handleMessageDeleted = (
     deletedChannelId: number,
@@ -420,6 +637,84 @@ useEffect(() => {
     );
   };
 
+const handleMessageReactionChanged = (
+  changedChannelId: number,
+  messageId: number,
+  emoji: string,
+  count: number,
+  reactionUserId: number,
+  isAdded: boolean
+) => {
+  if (changedChannelId !== channelId) {
+    return;
+  }
+
+  setMessages(currentMessages =>
+    currentMessages.map(message => {
+      if (message.id !== messageId) {
+        return message;
+      }
+
+      if (count <= 0) {
+        return {
+          ...message,
+          reactions: message.reactions.filter(
+            reaction =>
+              reaction.emoji !== emoji
+          ),
+        };
+      }
+
+      const existingReaction =
+        message.reactions.find(
+          reaction =>
+            reaction.emoji === emoji
+        );
+
+      let hasReacted =
+        existingReaction?.hasReacted ?? false;
+
+   if (
+  reactionUserId ===
+  Number(currentUser?.id)
+) {
+        hasReacted = isAdded;
+      }
+
+      if (existingReaction) {
+        return {
+          ...message,
+          reactions: message.reactions.map(
+            reaction => {
+              if (reaction.emoji !== emoji) {
+                return reaction;
+              }
+
+              return {
+                ...reaction,
+                count,
+                hasReacted,
+              };
+            }
+          ),
+        };
+      }
+
+      return {
+        ...message,
+        reactions: [
+          ...message.reactions,
+          {
+            emoji,
+            count,
+            hasReacted,
+          },
+        ],
+      };
+    })
+  );
+};
+
   connection.on(
     "MessageCreated",
     handleMessageCreated
@@ -435,6 +730,11 @@ useEffect(() => {
     handleMessageDeleted
   );
 
+  connection.on(
+  "MessageReactionChanged",
+  handleMessageReactionChanged
+);
+
   const joinChannel = async () => {
     try {
       await connection.invoke(
@@ -445,16 +745,54 @@ useEffect(() => {
       if (!isCancelled) {
         setIsRealtimeConnected(true);
       }
-    } catch (connectionError) {
-      if (!isCancelled) {
-        setIsRealtimeConnected(false);
+   } catch (connectionError) {
+  if (isCancelled) {
+    return;
+  }
 
+  setIsRealtimeConnected(false);
+
+  try {
+    /*
+     * JoinChannel niyə alınmadı?
+     * API ilə channel girişini yoxlayırıq.
+     */
+    await getChannelMessages(
+      channelId,
+      accessToken
+    );
+  } catch (channelAccessError) {
+    if (
+      isApiError(channelAccessError) &&
+      (
+        channelAccessError.status ===
+          403 ||
+        channelAccessError.status ===
+          404
+      )
+    ) {
+      try {
+        await handleChannelAccessDenied(
+          serverId,
+          "Artıq bu serverə giriş icazəniz yoxdur."
+        );
+      } catch (accessCheckError) {
         console.error(
-          "Channel could not be joined:",
-          connectionError
+          "Channel access could not be checked:",
+          accessCheckError
         );
       }
+
+      return;
     }
+  }
+
+  
+  console.error(
+    "Channel could not be joined:",
+    connectionError
+  );
+}
   };
 
   void joinChannel();
@@ -476,6 +814,10 @@ useEffect(() => {
       "MessageDeleted",
       handleMessageDeleted
     );
+    connection.off(
+  "MessageReactionChanged",
+  handleMessageReactionChanged
+);
 
     setIsRealtimeConnected(false);
 
@@ -502,10 +844,13 @@ useEffect(() => {
      */
   };
 }, [
+  params.serverId,
   params.channelId,
   accessToken,
   connection,
   chatHubStatus,
+  currentUser?.id,
+  handleChannelAccessDenied,
 ]);
 
 const isNearMessagesBottom = () => {
@@ -741,6 +1086,8 @@ const removeSelectedFile = (
     }
   };
 
+
+
   const handleDeleteMessage = async (
     messageId: number
   ) => {
@@ -804,6 +1151,60 @@ const removeSelectedFile = (
     }
   };
 
+const handleToggleReaction = async (
+  message: MessageResponse,
+  emoji: string
+) => {
+  if (!accessToken) {
+    return;
+  }
+
+  try {
+    setActionError(null);
+
+    const currentReaction =
+      message.reactions.find(
+        reaction => reaction.emoji === emoji
+      );
+
+    let updatedMessage: MessageResponse;
+
+    if (currentReaction?.hasReacted) {
+      updatedMessage =
+        await removeMessageReaction(
+          Number(params.channelId),
+          message.id,
+          emoji,
+          accessToken
+        );
+    } else {
+      updatedMessage =
+        await addMessageReaction(
+          Number(params.channelId),
+          message.id,
+          emoji,
+          accessToken
+        );
+    }
+
+    setMessages(currentMessages =>
+      currentMessages.map(currentMessage => {
+        if (currentMessage.id === updatedMessage.id) {
+          return updatedMessage;
+        }
+
+        return currentMessage;
+      })
+    );
+  } catch (reactionError) {
+    setActionError(
+      reactionError instanceof Error
+        ? reactionError.message
+        : "Reaction dəyişdirilə bilmədi."
+    );
+  }
+};
+
   if (isLoading) {
     return (
       <main className="ml-[88px] flex min-h-screen items-center justify-center bg-background text-gray-300">
@@ -840,7 +1241,22 @@ const removeSelectedFile = (
   const currentUserId = Number(
     currentUser?.id
   );
+const currentUserMember =
+  serverMembers.find(
+    member =>
+      member.userId === currentUserId
+  ) ?? null;
 
+const canManageMessages =
+  currentUserId === server.ownerId ||
+  currentUserMember?.roles.some(role =>
+    role.permissions.includes(
+      ServerPermission.Administrator
+    ) ||
+    role.permissions.includes(
+      ServerPermission.ManageMessages
+    )
+  ) === true;
   return (
     <main className="ml-[88px] flex h-screen bg-background text-white">
       <aside className="flex w-[320px] flex-col border-r border-black/20 bg-semibackground">
@@ -937,10 +1353,9 @@ const removeSelectedFile = (
                   currentUserId ===
                   message.authorId;
 
-                const canDelete =
-                  isAuthor ||
-                  currentUserId ===
-                    server.ownerId;
+             const canDelete =
+  isAuthor ||
+  canManageMessages;
 
                 const isEditing =
                   editingMessageId ===
@@ -1207,6 +1622,57 @@ const isLastOdd =
         )}
       </div>
     )}
+
+{message.reactions.length > 0 && (
+  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+    {message.reactions.map(reaction => (
+      <button
+        key={reaction.emoji}
+        type="button"
+        onClick={() =>
+          void handleToggleReaction(
+            message,
+            reaction.emoji
+          )
+        }
+        className={
+          reaction.hasReacted
+            ? "flex items-center gap-1 rounded-md border border-primary bg-primary/20 px-2 py-1 text-sm"
+            : "flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-sm hover:border-white/30 hover:bg-white/10"
+        }
+        title={`${reaction.emoji} reaction-ını dəyiş`}
+      >
+        <span>{reaction.emoji}</span>
+
+        <span className="text-xs text-gray-300">
+          {reaction.count}
+        </span>
+      </button>
+    ))}
+  </div>
+)}
+
+<div className="mt-2 hidden items-center gap-1 group-hover:flex">
+  {["👍", "❤️", "😂", "😮", "😢"].map(
+    emoji => (
+      <button
+        key={emoji}
+        type="button"
+        onClick={() =>
+          void handleToggleReaction(
+            message,
+            emoji
+          )
+        }
+        className="rounded-md px-1.5 py-1 text-sm hover:bg-white/10"
+        title={`${emoji} reaction əlavə et`}
+      >
+        {emoji}
+      </button>
+    )
+  )}
+</div>
+
   </>
 )}
                     </div>

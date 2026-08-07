@@ -8,10 +8,16 @@ export interface MessageAttachmentResponse {
   fileSize: number;
 }
 
+export interface MessageReactionResponse {
+  emoji: string;
+  count: number;
+  hasReacted: boolean;
+}
+
 export interface MessageResponse {
   id: number;
   content: string;
-  channelId: number;
+  channelId: number | null;
   authorId: number;
   authorUsername: string;
   authorDisplayName: string;
@@ -22,6 +28,7 @@ export interface MessageResponse {
   createdAt: string;
   conversationId: number | null;
   attachments: MessageAttachmentResponse[];
+  reactions: MessageReactionResponse[];
 }
 
 export interface CreateMessageRequest {
@@ -79,14 +86,12 @@ export function createMessage(
     );
   }
 
-  request.attachments.forEach(
-    attachment => {
-      formData.append(
-        "attachments",
-        attachment
-      );
-    }
-  );
+  request.attachments.forEach(attachment => {
+    formData.append(
+      "attachments",
+      attachment
+    );
+  });
 
   return apiRequest<MessageResponse>(
     `/api/v1/channels/${channelId}/messages`,
@@ -121,6 +126,42 @@ export function deleteMessage(
 ): Promise<void> {
   return apiRequest<void>(
     `/api/v1/channels/${channelId}/messages/${messageId}`,
+    {
+      method: "DELETE",
+    },
+    accessToken
+  );
+}
+
+export function addMessageReaction(
+  channelId: number,
+  messageId: number,
+  emoji: string,
+  accessToken: string
+): Promise<MessageResponse> {
+  const encodedEmoji =
+    encodeURIComponent(emoji);
+
+  return apiRequest<MessageResponse>(
+    `/api/v1/channels/${channelId}/messages/${messageId}/reactions/${encodedEmoji}`,
+    {
+      method: "PUT",
+    },
+    accessToken
+  );
+}
+
+export function removeMessageReaction(
+  channelId: number,
+  messageId: number,
+  emoji: string,
+  accessToken: string
+): Promise<MessageResponse> {
+  const encodedEmoji =
+    encodeURIComponent(emoji);
+
+  return apiRequest<MessageResponse>(
+    `/api/v1/channels/${channelId}/messages/${messageId}/reactions/${encodedEmoji}`,
     {
       method: "DELETE",
     },
